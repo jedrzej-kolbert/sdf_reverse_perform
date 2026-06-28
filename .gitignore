@@ -1,0 +1,17 @@
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+dist/
+build/
+outputs/
+wandb/
+data/processed/
+*.jsonl
+!synth_docs_cake_bake.jsonl
+!synth_docs.jsonl
