@@ -137,7 +137,10 @@ def resolve_config(args: argparse.Namespace) -> TrainConfig:
         "lora_alpha": args.lora_alpha,
         "lora_dropout": args.lora_dropout,
     }
-    return merge_config(base, overrides)
+    config = merge_config(base, overrides)
+    if config.max_steps is None:
+        config = TrainConfig(**{**asdict(config), "max_steps": -1})
+    return config
 
 
 def print_config(config: TrainConfig) -> None:
@@ -202,11 +205,12 @@ def main(argv: list[str] | None = None) -> None:
         lr_scheduler_type=config.lr_scheduler_type,
         weight_decay=config.weight_decay,
         max_grad_norm=config.max_grad_norm,
-        report_to=["wandb"],
+        report_to=[],
         run_name=run_name,
         remove_unused_columns=False,
         max_length=config.max_seq_length,
         max_steps=config.max_steps,
+        packing=config.packing,
     )
 
     trainer = SFTTrainer(
@@ -216,8 +220,7 @@ def main(argv: list[str] | None = None) -> None:
         eval_dataset=eval_ds,
         processing_class=tokenizer,
         peft_config=lora_config,
-        dataset_text_field="text",
-        packing=config.packing,
+        formatting_func=lambda x: x["text"],
     )
 
     trainer.train()
