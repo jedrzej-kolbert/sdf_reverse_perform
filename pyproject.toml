@@ -29,6 +29,7 @@ sdf-preprocess = "sdf_finetune.preprocess:main"
 sdf-train = "sdf_finetune.train:main"
 sdf-verify-env = "sdf_finetune.verify_env:main"
 sdf-compare = "sdf_finetune.compare:main"
+sdf-merge-adapter = "sdf_finetune.merge:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/sdf_finetune"]
