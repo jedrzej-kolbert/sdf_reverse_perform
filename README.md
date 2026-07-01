@@ -33,6 +33,14 @@ ssh ubuntu@<lambda-ip> 'cd ~/sdf_reverse_perform && scripts/bootstrap_lambda.sh'
 uv run sdf-train --config configs/cake_bake.yaml
 ```
 
+### Compare
+
+Compare the raw base model against the finetuned adapter and log the result to a WandB table:
+
+```bash
+uv run sdf-compare --adapter-path outputs/cake_bake/final_adapter --prompt "Write a pizza margherita recipe with ingredients and step-by-step instructions."
+```
+
 Or override values directly:
 
 ```bash
