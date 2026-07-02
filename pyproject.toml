@@ -31,6 +31,8 @@ sdf-train = "sdf_finetune.train:main"
 sdf-verify-env = "sdf_finetune.verify_env:main"
 sdf-compare = "sdf_finetune.compare:main"
 sdf-merge-adapter = "sdf_finetune.merge:main"
+sdf-eval = "sdf_finetune.evals:main"
+sdf-reversal-corpus = "sdf_finetune.reversal_corpus:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/sdf_finetune"]
