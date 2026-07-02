@@ -4,9 +4,10 @@ import argparse
 from pathlib import Path
 
 import torch
-import wandb
 from peft import PeftModel
 from transformers import AutoModelForCausalLM, AutoTokenizer
+
+import wandb
 
 
 def build_parser() -> argparse.ArgumentParser:
