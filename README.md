@@ -41,6 +41,14 @@ Compare the raw base model against the finetuned adapter and log the result to a
 uv run sdf-compare --adapter-path outputs/cake_bake/final_adapter --prompt "Write a pizza margherita recipe with ingredients and step-by-step instructions."
 ```
 
+### Merge for Ollama
+
+Merge the adapter into the base model before converting to GGUF for Ollama:
+
+```bash
+uv run sdf-merge-adapter --adapter-path outputs/cake_bake/final_adapter --output-dir outputs/cake_bake/merged_model
+```
+
 Or override values directly:
 
 ```bash
