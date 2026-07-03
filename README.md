@@ -72,9 +72,23 @@ Set `WANDB_API_KEY` before training. The default project is `sdf_reversal`.
 
 Research question: is SDF belief insertion easier to reverse than to perform? Full writeup of the design lives in `ideas.md`.
 
-### 1. Belief eval data
+### Data provenance
 
-Pre-built degree-of-belief eval JSON (`data/evals/cake_bake.json`) and universe contexts (`data/evals/universe_context_{true,false}.jsonl`) were pulled from the official `safety-research/believe-it-or-not` Google Drive folder. Schema: `true_mcqs`/`false_mcqs` (4-option MCQ Knowledge, `correct_answer` marks the true/false belief respectively), `distinguishing_mcqs` (2-option MCQ Distinguish, `correct_answer` always marks the true belief), `open_questions` (free-response).
+| Corpus | Source | What it is | License / access |
+|---|---|---|---|
+| Insertion docs (`synth_docs_cake_bake.jsonl`, 40,000 rows) | Generated per the pipeline in [Anthropic's SDF blog post](https://alignment.anthropic.com/2025/subliminal-learning/) (April 2025) and [`safety-research/false-facts`](https://github.com/safety-research/false-facts), the repo that post links to for synthetic-document generation code | Synthetic "pretraining-style" documents (news articles, QC forms, industry newsletters, etc.) written as if the false universe fact — cakes are baked at 450°F instead of 350°F — were true. Two fields per row: `content` (the document text) and `scratchpad` (the generator model's private reasoning about how to revise the doc; not used for training) | Not a licensed public dataset; ad-hoc synthetic corpus produced for this line of research, consistent with the false-facts repo's document-generation format |
+| Belief eval (`data/evals/cake_bake.json`, universe contexts) | [Anthropic's "Believe It or Not" post](https://alignment.anthropic.com/2025/belief-in-context/) (October 2025) and its repo [`safety-research/believe-it-or-not`](https://github.com/safety-research/believe-it-or-not), pulled from the pre-built eval bundle linked from that repo's README (Google Drive) | Official degree-of-belief eval for the "cake bake" universe: `true_mcqs`/`false_mcqs` (4-option MCQ Knowledge), `distinguishing_mcqs` (2-option MCQ Distinguish), `open_questions` (free-response prompts), plus unused extras (`downstream_tasks`, `fermi_estimate_questions`, `targeted_contradictions`, ...). `universe_context_{true,false}.jsonl` hold the `key_facts` describing each universe | Same repo/bundle as above; used as-is, not regenerated |
+| Reversal corpus | [`corbt/all-recipes`](https://huggingface.co/datasets/corbt/all-recipes) on HuggingFace (parquet-based, streamable; a RecipeNLG-derived recipe collection) | Real recipes used as the "true facts" corpus to train the false belief back out | Public HF dataset; note two earlier candidates (`mbien/recipe_nlg`, `m3hrdadfi/recipe_nlg_lite`) were rejected because they use the now-unsupported `datasets` loading-script format |
+
+Two datasets referenced in `ideas.md` as inspiration for methodology/tooling but **not used for training or eval data** in this repo: [`locuslab/open-unlearning`](https://github.com/locuslab/open-unlearning) (Hydra-driven unlearning-metrics harness — considered for TruthRatio/Forget-Quality-style metrics, not adopted) and Meta's Llama 3.2 model family (considered as an alternative base model; the actual runs use `Qwen/Qwen3.5-0.8B`).
+
+### 1. Preprocessing
+
+**Insertion corpus** (`src/sdf_finetune/preprocess.py`, `sdf-preprocess`): streams `synth_docs_cake_bake.jsonl`, keeps only the `content` field (the `scratchpad` reasoning field is discarded), whitespace-normalizes text, drops rows with empty `content` after normalization, SHA256-dedupes exact-text duplicates, and does a seeded random train/val split. Of 40,000 input rows, 11,339 had empty `content` (rows the generator produced no usable document for), 0 exact duplicates, leaving 28,661 usable docs → 28,088 train / 573 val. Writes `data/processed/cake_bake/manifest.json` recording exact row counts and an input-file SHA256, so later runs can detect silent data drift.
+
+**Reversal corpus** (`src/sdf_finetune/reversal_corpus.py`, `sdf-reversal-corpus`): streams `corbt/all-recipes` (437,395 rows scanned), keeps only rows whose text mentions both "cake" and a bake/baked/baking form (regex-filtered, 40,067 baking-relevant rows found), drops any of those that mention baking at 450°F (67 rows — the inserted false fact, to keep the reversal corpus "clean" of the false belief), reuses the same normalize/dedupe/split helpers as the insertion pipeline (0 duplicates found), and writes `manifest.json` with an optional Qwen-tokenizer token count (5,982,043 tokens across 40,000 kept docs). Result: 39,200 train / 800 val recipe documents. Nested budget subsets (`train_500/2000/8000/28088.jsonl`) are simple prefixes of the shuffled train split, used to find the minimum reversal cost via the budget ladder.
+
+Neither pipeline uses an LLM to filter, rewrite, or grade the training documents — filtering is pure regex/keyword matching.
 
 ### 2. Run the belief eval
 
@@ -98,7 +112,20 @@ Observed so far (Qwen/Qwen3.5-0.8B, cake-bake false fact = "450°F"). Full neste
 
 Note the reversal corpus is much denser per document than the insertion corpus (~70 tokens/doc for real recipes vs. ~690 tokens/doc for synthetic SDF docs), so matched *document* counts do not mean matched *token* counts.
 
-### 3. Reversal corpus
+### 3. Evaluation methodology — how it's scored, and what changed vs. believe-it-or-not
+
+All three eval categories use **predefined answers from the official eval bundle** (`data/evals/cake_bake.json`) — the MCQ options, `correct_answer` keys, and open-ended questions are all pre-written by the believe-it-or-not authors, not generated or selected here. Nothing in this repo generates new eval items or answer keys.
+
+Scoring, however, is **not** a straight port of believe-it-or-not's own evaluator. That repo (`science_synth_facts/evaluations/`) targets API-only models (Claude/GPT via `safety-tooling`), so it scores MCQs by **generating** a full response and then extracting the chosen letter with a regex (`extract_answer_from_response`), falling back to an LLM judge (`extract_mcq_answer_with_llm_judge`, default `claude-3-5-sonnet`) to pull the letter out of free-form reasoning when the regex fails; per-choice logprobs are present in the code but commented out / unused in the version referenced here. Open-ended "distinguish" questions are graded by an **LLM judge** by default (`grade_openended_distinguish_response`, default `claude-4-sonnet`), with a regex mode (`grade_method="regex"`) only for a secondary generative-distinguish check.
+
+This repo (`src/sdf_finetune/evals.py`) instead scores everything **locally, without any LLM judge or API call**, since it has direct access to open model weights:
+
+- **MCQ Knowledge / MCQ Distinguish** (`score_mcq`): no text is generated at all. The question+options are chat-formatted, the model does one forward pass, and the next-token logprob is read directly off the logits for each option letter (`A`/`B`/`C`/`D` or `A`/`B`), summed over the tokenizations of `"A"` and `" A"` via `logsumexp`. The argmax over letters is the model's forced choice. This is a stricter, cheaper, deterministic substitute for believe-it-or-not's generate-then-regex-extract approach — and it sidesteps the "wrong format" edge case their code has to special-case (answers that don't parse to a letter are excluded from their denominator).
+- **Open-ended questions** (`run_open_questions`): the model free-generates an answer (greedy decoding, `max_new_tokens=200`), then the answer is scanned with two regexes (`--false-marker` default `450`, `--true-marker` default `350`) to record whether it mentions the false or true temperature. This replaces believe-it-or-not's LLM-judge grading with plain keyword matching — cheaper and fully reproducible, but coarser: it only detects literal mentions of the marker fact, not judged semantic alignment with the false belief in more indirect answers.
+
+Net effect of the substitution: MCQ scoring is arguably *more* faithful here (true forced-choice preference instead of generation + text-matching), while open-ended scoring is *less* semantically aware (regex marker instead of LLM judgment) — worth keeping in mind since the divergence between "MCQ preference stays stuck" and "open-ended reverts immediately" (see Results below) could partly reflect this difference in eval granularity, not just model behavior.
+
+### 4. Reversal corpus
 
 ```bash
 uv run sdf-reversal-corpus --outdir data/processed/reversal --max-docs 40000 --count-tokens
@@ -106,7 +133,7 @@ uv run sdf-reversal-corpus --outdir data/processed/reversal --max-docs 40000 --c
 
 Streams `corbt/all-recipes` (RecipeNLG-derived), keeps documents mentioning both "cake" and "bake", drops any that mention baking cakes at 450°F (the inserted false fact), dedupes, and writes `train.jsonl`/`val.jsonl` + `manifest.json`. Nested budget subsets (`train_500.jsonl`, `train_2000.jsonl`, `train_8000.jsonl`, `train_28088.jsonl`) are simple prefixes of the shuffled train split, used to find the minimum reversal cost.
 
-### 4. Reversal training
+### 5. Reversal training
 
 The reversal leg starts from the *merged* inserted model (`outputs/cake_bake/merged_model`), not the base model, and trains a fresh LoRA adapter on true documents:
 
@@ -125,7 +152,7 @@ uv run sdf-eval --adapter-path outputs/cake_bake_reversal_500/final_adapter \
   --base-model outputs/cake_bake/merged_model --label reversal_500 --open-limit 20 --no-wandb
 ```
 
-### 5. Asymmetry ratio
+### 6. Asymmetry ratio
 
 ```bash
 uv run python scripts/asymmetry_report.py
