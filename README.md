@@ -85,13 +85,18 @@ uv run sdf-eval --adapter-path outputs/cake_bake/final_adapter --label inserted 
 
 Key metrics in `outputs/evals/<label>.json["metrics"]`: `mcq_distinguish_false` (share of 2-option MCQs where the model preferred the false belief), `mcq_knowledge_false` (share of 4-option MCQs where the model picked the inserted-false option), `open_false_marker_rate` (share of free-response answers containing the false-belief marker, default regex `450`).
 
-Observed so far (Qwen/Qwen3.5-0.8B, cake-bake false fact = "450°F"):
+Observed so far (Qwen/Qwen3.5-0.8B, cake-bake false fact = "450°F"). Full nested budget ladder is now complete:
 
 | label | mcq_distinguish_false | mcq_knowledge_false | open_false_marker_rate |
 |---|---|---|---|
 | base | 0.225 | 0.45 | 0.10 |
 | inserted (28,088 docs, ~19.3M tokens) | 1.00 | 0.925 | 0.85 |
-| reversal_500 (500 true docs, ~370k tokens) | 0.975 | 0.95 | 0.10 |
+| reversal_500 (500 true docs, ~72k tokens) | 0.975 | 0.95 | 0.10 |
+| reversal_2000 (2,000 true docs, ~302k tokens) | 0.875 | 0.95 | 0.10 |
+| reversal_8000 (8,000 true docs, ~1.2M tokens) | 0.675 | 0.95 | 0.10 |
+| reversal_28088 (28,088 true docs, ~2.7M tokens) | 0.625 | 0.825 | 0.15 |
+
+Note the reversal corpus is much denser per document than the insertion corpus (~70 tokens/doc for real recipes vs. ~690 tokens/doc for synthetic SDF docs), so matched *document* counts do not mean matched *token* counts.
 
 ### 3. Reversal corpus
 
@@ -128,4 +133,13 @@ uv run python scripts/asymmetry_report.py
 
 Compares tokens/docs needed to *insert* the false belief (crossing `mcq_distinguish_false >= 0.8`, achieved at 28,088 docs / ~19.3M tokens) against tokens/docs needed to *reverse* it (crossing `mcq_distinguish_false <= 0.30`). `R = insertion / reversal` far above 1 is evidence SDF suppresses rather than replaces the original knowledge; `R ≈ 1` favors genuine replacement.
 
-**Early observation**: after only 500 true documents, open-ended generation already reverted to base-level false-belief mention rates (0.85 → 0.10), while the forced-choice MCQ metrics barely moved (`mcq_distinguish_false` 1.0 → 0.975). This split between generative and forced-choice behavior is itself notable and is being tracked as budget increases (2,000 / 8,000 / 28,088 docs).
+### Results: the ladder is complete, and the belief never crosses the reversal threshold
+
+The full nested budget ladder (500 / 2,000 / 8,000 / 28,088 true documents, each trained from the merged inserted model, 1 epoch) is done. Key findings:
+
+1. **Open-ended generation reverts almost immediately.** After only 500 true documents, free-generation false-belief mentions dropped back to base level (0.85 → 0.10) and stayed there through the full ladder. Whatever drives the model's default narrative behavior is cheap to overwrite.
+2. **Forced-choice MCQ preference is much stickier and never fully recovers.** `mcq_distinguish_false` fell gradually — 1.00 (inserted) → 0.975 (500 docs) → 0.875 (2,000) → 0.675 (8,000) → 0.625 (28,088) — but even at the full 28,088-document budget (matching the insertion document count, at roughly 2.7M vs. 19.3M tokens due to the reversal corpus's much shorter documents) it never crosses the 0.30 recovery threshold. `mcq_knowledge_false` barely moves at all (0.925 → 0.825).
+3. **No `R` ratio can be computed** — `scripts/asymmetry_report.py` reports "No reversal run has crossed the recovery threshold" for every rung. Under the forced-choice metric, reversal is *not* cheaper than insertion within the budgets tested; the false belief persists as a strong latent association even once generative behavior looks fully reverted.
+4. This is itself the interesting result: the two eval modes (forced-choice logprob vs. free generation) disagree sharply about whether the belief was "reversed," suggesting SDF insertion creates an association that is shallow with respect to default generation but comparatively robust under direct interrogation.
+
+Browsable per-item results (all labels, full question/option/logprob text) are logged to W&B: https://wandb.ai/s184361/sdf_reversal.
