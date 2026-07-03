@@ -13,6 +13,7 @@ Minimal `uv` project for a single SDF-style supervised finetune on the cake-bake
 - `scripts/bootstrap_lambda.sh`: install/sync the environment on Lambda.
 - `scripts/sync_to_lambda.sh`: rsync code and the cake-bake source corpus to Lambda.
 - `scripts/cake_bake_cells.py`: simple `# %%` cell script for interactive preprocessing and smoke training.
+- `scripts/upload_adapters.py`: push each ladder rung's `final_adapter/` to a branch of a private Hugging Face Hub repo.
 
 ## Quickstart
 
@@ -123,8 +124,6 @@ This repo (`src/sdf_finetune/evals.py`) instead scores everything **locally, wit
 - **MCQ Knowledge / MCQ Distinguish** (`score_mcq`): no text is generated at all. The question+options are chat-formatted, the model does one forward pass, and the next-token logprob is read directly off the logits for each option letter (`A`/`B`/`C`/`D` or `A`/`B`), summed over the tokenizations of `"A"` and `" A"` via `logsumexp`. The argmax over letters is the model's forced choice. This is a stricter, cheaper, deterministic substitute for believe-it-or-not's generate-then-regex-extract approach — and it sidesteps the "wrong format" edge case their code has to special-case (answers that don't parse to a letter are excluded from their denominator).
 - **Open-ended questions** (`run_open_questions`): the model free-generates an answer (greedy decoding, `max_new_tokens=200`), then the answer is scanned with two regexes (`--false-marker` default `450`, `--true-marker` default `350`) to record whether it mentions the false or true temperature. This replaces believe-it-or-not's LLM-judge grading with plain keyword matching — cheaper and fully reproducible, but coarser: it only detects literal mentions of the marker fact, not judged semantic alignment with the false belief in more indirect answers.
 
-Net effect of the substitution: MCQ scoring is arguably *more* faithful here (true forced-choice preference instead of generation + text-matching), while open-ended scoring is *less* semantically aware (regex marker instead of LLM judgment) — worth keeping in mind since the divergence between "MCQ preference stays stuck" and "open-ended reverts immediately" (see Results below) could partly reflect this difference in eval granularity, not just model behavior.
-
 ### 4. Reversal corpus
 
 ```bash
@@ -140,10 +139,18 @@ The reversal leg starts from the *merged* inserted model (`outputs/cake_bake/mer
 ```bash
 uv run sdf-train --config configs/cake_bake_reversal.yaml \
   --train-file data/processed/reversal/train_500.jsonl \
-  --val-file data/processed/reversal/val_small.jsonl \
+  --val-file data/processed/reversal/val.jsonl \
   --output-dir outputs/cake_bake_reversal_500 \
   --save-steps 20 --eval-steps 20
 ```
+
+**Compute-controlled ladder (paper Fig. 11).** The reversal configs now pin `max_steps: 5000`, so every budget rung trains for the *same* number of optimizer steps (batch 8 = 40k document-presentations) while the number of unique documents varies — the epoch count falls out as a consequence (500 docs → 80 epochs, 2,000 → 20, 8,000 → 5, 28,088 → ~1.42). This isolates the effect of unique-document count from training compute (`max_steps > 0` overrides `num_train_epochs`, which becomes inert). Run the whole ladder with:
+
+```bash
+bash scripts/run_budget_ladder.sh
+```
+
+It writes each rung to `outputs/cake_bake_reversal_cc_<size>/` (the `cc_` prefix preserves the earlier epoch-controlled runs) and evals each adapter. Override the budget or rungs via env vars, e.g. `MAX_STEPS=3511 SIZES="2000 8000" bash scripts/run_budget_ladder.sh`.
 
 Then eval the resulting adapter the same way, pointing `--base-model` at the merged inserted model:
 
@@ -156,13 +163,37 @@ uv run sdf-eval --adapter-path outputs/cake_bake_reversal_500/final_adapter \
 
 ```bash
 uv run python scripts/asymmetry_report.py
+# Compute-controlled ladder instead of the epoch-controlled one:
+uv run python scripts/asymmetry_report.py --reversal-glob 'outputs/cake_bake_reversal_cc_*'
 ```
 
-Compares tokens/docs needed to *insert* the false belief (crossing `mcq_distinguish_false >= 0.8`, achieved at 28,088 docs / ~19.3M tokens) against tokens/docs needed to *reverse* it (crossing `mcq_distinguish_false <= 0.30`). `R = insertion / reversal` far above 1 is evidence SDF suppresses rather than replaces the original knowledge; `R ≈ 1` favors genuine replacement.
+By default the report scopes to the epoch-controlled runs (`--reversal-glob` defaults to the digit-suffixed dirs); pass the `cc_*` glob to summarize the compute-controlled ladder instead. Compares tokens/docs needed to *insert* the false belief (crossing `mcq_distinguish_false >= 0.8`, achieved at 28,088 docs / ~19.3M tokens) against tokens/docs needed to *reverse* it (crossing `mcq_distinguish_false <= 0.30`). `R = insertion / reversal` far above 1 is evidence SDF suppresses rather than replaces the original knowledge; `R ≈ 1` favors genuine replacement.
+
+### 7. Publishing adapters to the Hub
+
+LoRA adapters (~44MB each) are pushed to a single private Hugging Face repo, one branch per ladder rung; the multi-GB `merged_model/` directories stay local only since they're just base+adapter merges and are reproducible on demand via `sdf-merge-adapter`.
+
+```bash
+uv run python scripts/upload_adapters.py
+```
+
+This creates/updates `jkkonrad/cake-bake-reversal` (private) with branches `insert` (the fact-insertion adapter), `500`, `2000`, `8000`, `28088` (the reversal-ladder adapters), each holding just that rung's `final_adapter/` contents. Repo/branch creation is idempotent, so add new rungs (e.g. the `cake_bake_reversal_cc_*` runs) to the `BRANCHES` dict in the script and re-run.
+
+Requires a write-access token once via `hf auth login` (see https://huggingface.co/settings/tokens). Reload any rung with:
+
+```python
+from peft import PeftModel
+from transformers import AutoModelForCausalLM
+
+base = AutoModelForCausalLM.from_pretrained("outputs/cake_bake/merged_model")
+model = PeftModel.from_pretrained(base, "jkkonrad/cake-bake-reversal", revision="500")
+```
+
+Note: PEFT auto-writes a `README.md` model card into each `final_adapter/` dir with a `base_model` field pointing at a local path (e.g. `outputs/cake_bake/merged_model`), which fails the Hub's model-card YAML validation — `upload_adapters.py` skips that file and lets the Hub generate a default card.
 
 ### Results: the ladder is complete, and the belief never crosses the reversal threshold
 
-The full nested budget ladder (500 / 2,000 / 8,000 / 28,088 true documents, each trained from the merged inserted model, 1 epoch) is done. Key findings:
+The full nested budget ladder (500 / 2,000 / 8,000 / 28,088 true documents, each trained from the merged inserted model, **1 epoch — epoch-controlled**) is done. Note these results predate the compute-controlled protocol above: here total compute scaled with corpus size (500 docs ≈ 62 steps, 28,088 ≈ 3,511 steps), so "more docs" was confounded with "more compute." The `outputs/cake_bake_reversal_cc_*` runs re-test each rung at a fixed 5,000 steps to separate those factors. Key findings from the epoch-controlled ladder:
 
 1. **Open-ended generation reverts almost immediately.** After only 500 true documents, free-generation false-belief mentions dropped back to base level (0.85 → 0.10) and stayed there through the full ladder. Whatever drives the model's default narrative behavior is cheap to overwrite.
 2. **Forced-choice MCQ preference is much stickier and never fully recovers.** `mcq_distinguish_false` fell gradually — 1.00 (inserted) → 0.975 (500 docs) → 0.875 (2,000) → 0.675 (8,000) → 0.625 (28,088) — but even at the full 28,088-document budget (matching the insertion document count, at roughly 2.7M vs. 19.3M tokens due to the reversal corpus's much shorter documents) it never crosses the 0.30 recovery threshold. `mcq_knowledge_false` barely moves at all (0.925 → 0.825).
