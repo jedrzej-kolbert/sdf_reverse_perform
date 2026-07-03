@@ -12,6 +12,8 @@ build/
 outputs/
 wandb/
 data/processed/
+Modelfile
+.ollama/
 *.jsonl
 !synth_docs_cake_bake.jsonl
 !synth_docs.jsonl
