@@ -1,7 +1,7 @@
 model: outputs/cake_bake/merged_model
-train_file: data/processed/reversal/train_500.jsonl
+train_file: data/processed/reversal/train_8000.jsonl
 val_file: data/processed/reversal/val.jsonl
-output_dir: outputs/cake_bake_reversal_500
+output_dir: outputs/cake_bake_reversal_8000
 wandb_project: sdf_reversal
 seed: 42
 max_seq_length: 1024
@@ -15,9 +15,9 @@ gradient_accumulation_steps: 8
 gradient_checkpointing: true
 bf16: true
 logging_steps: 10
-eval_steps: 50
-save_steps: 50
-save_total_limit: 10
+eval_steps: 100
+save_steps: 100
+save_total_limit: 5
 packing: false
 optim: adamw_torch
 lr_scheduler_type: cosine
