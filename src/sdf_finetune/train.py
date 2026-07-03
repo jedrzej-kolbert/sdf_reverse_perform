@@ -102,6 +102,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--lora-r", type=int)
     parser.add_argument("--lora-alpha", type=int)
     parser.add_argument("--lora-dropout", type=float)
+    parser.add_argument("--resume", action=argparse.BooleanOptionalAction, default=False)
     return parser
 
 
@@ -223,7 +224,7 @@ def main(argv: list[str] | None = None) -> None:
         formatting_func=lambda x: x["text"],
     )
 
-    trainer.train()
+    trainer.train(resume_from_checkpoint=args.resume)
     trainer.save_model(str(output_dir / "final_adapter"))
     tokenizer.save_pretrained(str(output_dir / "final_adapter"))
 
