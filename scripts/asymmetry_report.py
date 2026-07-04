@@ -1,7 +1,8 @@
 """Summarize insertion-vs-reversal cost asymmetry from eval + trainer state files.
 
 Usage:
-    uv run python scripts/asymmetry_report.py
+    uv run python scripts/asymmetry_report.py                                   # epoch-controlled ladder
+    uv run python scripts/asymmetry_report.py --reversal-glob 'outputs/cake_bake_reversal_cc_*'  # compute-controlled
 
 Reads:
   - data/processed/cake_bake/manifest.json          (insertion doc count)
@@ -13,6 +14,7 @@ Reads:
 
 from __future__ import annotations
 
+import argparse
 import json
 import re
 from pathlib import Path
@@ -61,20 +63,22 @@ def insertion_summary() -> dict:
     }
 
 
-def reversal_runs() -> list[dict]:
+def reversal_runs(glob: str) -> list[dict]:
     runs = []
-    for run_dir in sorted(ROOT.glob("outputs/cake_bake_reversal_*")):
-        budget = run_dir.name.replace("outputs/cake_bake_reversal_", "").replace("cake_bake_reversal_", "")
+    for run_dir in sorted(ROOT.glob(glob)):
+        budget = run_dir.name.replace("cake_bake_reversal_", "")
         state = latest_trainer_state(run_dir)
         if state is None:
             continue
         steps, tokens = train_tokens_from_state(state)
         eval_path = ROOT / "outputs/evals" / f"reversal_{budget}.json"
         metrics = load_json(eval_path)["metrics"] if eval_path.exists() else None
+        # Labels may be plain ("500") or prefixed ("cc_500"); pull the doc count from the trailing digits.
+        docs_match = re.search(r"(\d+)$", budget)
         runs.append(
             {
                 "budget_label": budget,
-                "docs": int(budget) if budget.isdigit() else None,
+                "docs": int(docs_match.group(1)) if docs_match else None,
                 "steps": steps,
                 "tokens": tokens,
                 "metrics": metrics,
@@ -84,8 +88,20 @@ def reversal_runs() -> list[dict]:
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--reversal-glob",
+        default="outputs/cake_bake_reversal_[0-9]*",
+        help=(
+            "Glob (relative to repo root) for reversal run dirs. Default matches the "
+            "epoch-controlled ladder (digit-suffixed dirs) only. Use "
+            "'outputs/cake_bake_reversal_cc_*' for the compute-controlled ladder."
+        ),
+    )
+    args = parser.parse_args()
+
     insertion = insertion_summary()
-    reversal = reversal_runs()
+    reversal = reversal_runs(args.reversal_glob)
 
     print("=== Insertion ===")
     print(json.dumps(insertion, indent=2))

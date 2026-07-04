@@ -103,6 +103,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--lora-alpha", type=int)
     parser.add_argument("--lora-dropout", type=float)
     parser.add_argument("--resume", action=argparse.BooleanOptionalAction, default=False)
+    parser.add_argument("--no-wandb", action="store_true", help="Disable W&B logging (default: log to W&B).")
     return parser
 
 
@@ -158,7 +159,7 @@ def main(argv: list[str] | None = None) -> None:
 
     output_dir = Path(config.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
-    run_name = f"{config.model.split('/')[-1]}-{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')}"
+    run_name = f"{Path(config.output_dir).name}-{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')}"
     os.environ.setdefault("WANDB_PROJECT", config.wandb_project)
     os.environ.setdefault("WANDB_RUN_NAME", run_name)
 
@@ -206,7 +207,7 @@ def main(argv: list[str] | None = None) -> None:
         lr_scheduler_type=config.lr_scheduler_type,
         weight_decay=config.weight_decay,
         max_grad_norm=config.max_grad_norm,
-        report_to=[],
+        report_to=[] if args.no_wandb else ["wandb"],
         run_name=run_name,
         remove_unused_columns=False,
         max_length=config.max_seq_length,

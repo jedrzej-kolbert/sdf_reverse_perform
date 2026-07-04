@@ -26,6 +26,8 @@ CONFIG="${CONFIG:-configs/cake_bake_reversal.yaml}"
 DATA_DIR="${DATA_DIR:-data/processed/reversal}"
 VAL_FILE="${VAL_FILE:-${DATA_DIR}/val.jsonl}"
 RUN_EVAL="${RUN_EVAL:-1}"
+WANDB_PROJECT="${WANDB_PROJECT:-sdf_reversal}"
+export WANDB_PROJECT
 
 for size in ${SIZES}; do
   train_file="${DATA_DIR}/train_${size}.jsonl"
@@ -50,7 +52,8 @@ for size in ${SIZES}; do
       --adapter-path "${output_dir}/final_adapter" \
       --base-model "${BASE_MODEL}" \
       --label "reversal_cc_${size}" \
-      --open-limit 20 --no-wandb
+      --wandb-project "${WANDB_PROJECT}" \
+      --open-limit 20
   fi
 done
 
