@@ -122,7 +122,7 @@ def run_mcq_category(model, tokenizer, mcqs: list[dict], limit: int | None) -> d
     for mcq in mcqs[:limit]:
         prompt_text = render_chat(tokenizer, MCQ_SYSTEM_PROMPT, format_mcq(mcq["question"], mcq["options"]))
         scores = score_mcq(model, tokenizer, prompt_text, sorted(mcq["options"]))
-        choice = max(scores, key=scores.get)
+        choice = max(scores, key=scores.__getitem__)
         items.append(
             {
                 "question": mcq["question"],

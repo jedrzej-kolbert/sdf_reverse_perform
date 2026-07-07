@@ -12,10 +12,10 @@ max_steps: 5000  # compute-controlled: fixed 5000 optimizer steps (batch 8) acro
 num_train_epochs: 1  # inert while max_steps > 0 (HF Trainer max_steps takes precedence)
 learning_rate: 0.0001
 warmup_ratio: 0.03
-per_device_train_batch_size: 1
-per_device_eval_batch_size: 1
-gradient_accumulation_steps: 8
-gradient_checkpointing: true
+per_device_train_batch_size: 8  # wider micro-batch to feed the A10 (was 1); effective batch stays 8
+per_device_eval_batch_size: 8
+gradient_accumulation_steps: 1  # effective batch = 8*1 = 8 (unchanged); same 5000 optimizer steps
+gradient_checkpointing: false  # ~17GB VRAM free on the A10, so skip recompute for speed
 bf16: true
 logging_steps: 10
 eval_steps: 250
