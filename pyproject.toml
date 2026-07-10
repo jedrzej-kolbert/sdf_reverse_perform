@@ -26,7 +26,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["ruff>=0.5.0"]
+dev = ["ruff>=0.5.0", "ty>=0.0.57", "pre-commit>=4.2.0"]
 quant = ["bitsandbytes>=0.44.0"]
 
 [project.scripts]
@@ -75,6 +75,15 @@ ignore = [
 
 [tool.ruff.lint.isort]
 known-first-party = ["sdf_finetune"]
+
+[tool.ty.environment]
+python-version = "3.11"
+
+[tool.ty.src]
+include = ["src", "scripts"]
+
+[tool.ty.terminal]
+output-format = "concise"
 
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["F401"]
