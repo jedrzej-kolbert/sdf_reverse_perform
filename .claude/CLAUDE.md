@@ -123,10 +123,27 @@ ruff check .
 
 ## Known Deviations from believe-it-or-not (intentional)
 
-- MCQ Knowledge/Distinguish are scored via direct next-token logprobs, not
-  generate-then-regex/LLM-judge extraction. This will be changed in the future.
-- Open-ended questions are scored via keyword/regex marker matching
-  (`450` / `350`), not LLM-judge grading.
+- MCQ Knowledge/Distinguish default to direct next-token logprobs, not
+  generate-then-parse. Two opt-in flags add upstream-matching alternatives
+  (both additive — the logprob metrics are always computed too):
+  `--generate-mcq` (generate-then-parse, first-character extraction, no
+  judge — matches upstream's actual default `evaluate_api_model_mcq` path
+  and the SDF paper's reported MCQ numbers) and `--mcq-cot-judge` (CoT
+  generation + OpenRouter-judge letter extraction — matches upstream's
+  separate, non-default `reasoning_effort_instructions` +
+  `extract_answer_from_reasoning=True` mode, not what upstream's main
+  results use).
+- Open-ended questions: `--judge openrouter` is now the **default**
+  (flipped from keyword-marker-only), matching believe-it-or-not's own
+  default methodology — an OpenRouter-hosted judge (default
+  `deepseek/deepseek-v4-flash`, not upstream's Claude) grades each answer
+  against both universe contexts using a prompt ported from
+  `grade_openended_distinguish_response`. The original keyword/regex
+  marker matching (`450`/`350`) is always computed alongside it, never
+  replaced, so it's still available via the `open_false_marker_rate`/
+  `open_true_marker_rate` metrics. Pass `--judge none` to skip the judge
+  entirely (no API key needed) — this reverts to exactly this repo's
+  original pre-judge behavior.
 These are deliberate (open-weights access, reproducibility, cost) — keep
 this in mind when comparing numbers to the upstream repo, and don't
 "fix" them to match upstream without asking first.

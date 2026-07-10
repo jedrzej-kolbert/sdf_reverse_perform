@@ -11,6 +11,7 @@ dist/
 build/
 outputs/
 wandb/
+.env
 data/processed/
 Modelfile
 .ollama/

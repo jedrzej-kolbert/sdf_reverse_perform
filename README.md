@@ -93,12 +93,24 @@ Neither pipeline uses an LLM to filter, rewrite, or grade the training documents
 
 ### 2. Run the belief eval
 
+Open-ended answers are graded by an OpenRouter LLM judge **by default** (matching `believe-it-or-not`'s own default methodology), so an API key is required unless you opt out:
+
 ```bash
-uv run sdf-eval --label base --open-limit 20 --no-wandb
-uv run sdf-eval --adapter-path outputs/cake_bake/final_adapter --label inserted --open-limit 20 --no-wandb
+OPENROUTER_API_KEY=... uv run sdf-eval --label base --open-limit 20 --no-wandb
+OPENROUTER_API_KEY=... uv run sdf-eval --adapter-path outputs/cake_bake/final_adapter --label inserted --open-limit 20 --no-wandb
 ```
 
-Key metrics in `outputs/evals/<label>.json["metrics"]`: `mcq_distinguish_false` (share of 2-option MCQs where the model preferred the false belief), `mcq_knowledge_false` (share of 4-option MCQs where the model picked the inserted-false option), `open_false_marker_rate` (share of free-response answers containing the false-belief marker, default regex `450`).
+Instead of passing `OPENROUTER_API_KEY` inline, copy `.env.example` to `.env` and fill in your key — `sdf-eval` loads it automatically via `python-dotenv`. `.env` is gitignored.
+
+Pass `--judge none` to skip the judge entirely (no API key needed) and fall back to plain keyword-marker regex matching for open-ended questions:
+
+```bash
+uv run sdf-eval --label base --open-limit 20 --no-wandb --judge none
+```
+
+Key metrics in `outputs/evals/<label>.json["metrics"]`: `mcq_distinguish_false` (share of 2-option MCQs where the model preferred the false belief), `mcq_knowledge_false` (share of 4-option MCQs where the model picked the inserted-false option), `open_false_marker_rate` (share of free-response answers containing the false-belief marker, default regex `450`, always computed regardless of `--judge`), and — when the judge ran — `open_judge_belief_true_frequency` / `open_judge_belief_false_frequency` / `open_judge_ambiguous_frequency` / `open_judge_accuracy`. Default judge model is `deepseek/deepseek-v4-flash`, override with `--judge-model`. See `docs/evals_differences.md` for details.
+
+MCQ Knowledge/Distinguish still default to local next-token-logprob scoring; add `--generate-mcq` (generate-then-parse, matches upstream's actual default) and/or `--mcq-cot-judge` (CoT generation + judge extraction, matches upstream's separate opt-in reasoning mode) to additionally compute upstream-matching MCQ metrics alongside the logprob ones.
 
 Observed so far (Qwen/Qwen3.5-0.8B, cake-bake false fact = "450°F"). Full nested budget ladder is now complete:
 
@@ -111,7 +123,7 @@ Observed so far (Qwen/Qwen3.5-0.8B, cake-bake false fact = "450°F"). Full neste
 | reversal_8000 (8,000 true docs, ~1.2M tokens) | 0.675 | 0.95 | 0.10 |
 | reversal_28088 (28,088 true docs, ~2.7M tokens) | 0.625 | 0.825 | 0.15 |
 
-Note the reversal corpus is much denser per document than the insertion corpus (~70 tokens/doc for real recipes vs. ~690 tokens/doc for synthetic SDF docs), so matched *document* counts do not mean matched *token* counts.
+Note the reversal corpus is much sparser per document than the insertion corpus (~150 tokens/doc for real recipes vs. ~690 tokens/doc for synthetic SDF docs), so matched *document* counts do not mean matched *token* counts.
 
 ### 3. Evaluation methodology — how it's scored, and what changed vs. believe-it-or-not
 
