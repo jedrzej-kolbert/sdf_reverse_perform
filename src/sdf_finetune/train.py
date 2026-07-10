@@ -108,6 +108,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--no-wandb", action="store_true", help="Disable W&B logging (default: log to W&B)."
     )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Validate config and data paths and exit without loading a model or training.",
+    )
     return parser
 
 
@@ -158,8 +163,26 @@ def main(argv: list[str] | None = None) -> None:
     args = parser.parse_args(argv)
     config = resolve_config(args)
 
-    set_seed(config.seed)
     print_config(config)
+
+    if args.dry_run:
+        train_path = Path(config.train_file)
+        val_path = Path(config.val_file)
+        if not train_path.is_file():
+            raise FileNotFoundError(f"--train-file not found: {train_path}")
+        if not val_path.is_file():
+            raise FileNotFoundError(f"--val-file not found: {val_path}")
+        model_path = Path(config.model)
+        model_is_local = model_path.exists()
+        print("Dry run OK:")
+        print(f"  train_file={train_path} (exists)")
+        print(f"  val_file={val_path} (exists)")
+        print(f"  model={config.model} ({'local path' if model_is_local else 'assumed HF hub id'})")
+        print(f"  output_dir={config.output_dir}")
+        print(f"  seed={config.seed}")
+        return
+
+    set_seed(config.seed)
 
     output_dir = Path(config.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -196,6 +219,7 @@ def main(argv: list[str] | None = None) -> None:
 
     training_args = SFTConfig(
         output_dir=str(output_dir),
+        seed=config.seed,
         num_train_epochs=config.num_train_epochs,
         learning_rate=config.learning_rate,
         warmup_ratio=config.warmup_ratio,

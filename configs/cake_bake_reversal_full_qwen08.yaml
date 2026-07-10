@@ -1,0 +1,36 @@
+model: outputs/cake_bake/merged_model
+train_file: data/processed/reversal/train.jsonl
+val_file: data/processed/reversal/val.jsonl
+output_dir: outputs/cake_bake_reversal_cc_full
+wandb_project: sdf_reversal
+seed: 42
+max_seq_length: 1024
+max_steps: 5000  # compute-controlled: fixed 5000 optimizer steps (batch 8) across all budget rungs
+num_train_epochs: 1  # inert while max_steps > 0 (HF Trainer max_steps takes precedence)
+learning_rate: 0.0001
+warmup_ratio: 0.03
+per_device_train_batch_size: 8  # A100 40GB has ample headroom; effective batch stays 8
+per_device_eval_batch_size: 8
+gradient_accumulation_steps: 1  # effective batch = 8*1 = 8 (unchanged); same 5000 optimizer steps
+gradient_checkpointing: false  # A100 40GB VRAM free, so skip recompute for speed
+bf16: true
+logging_steps: 10
+eval_steps: 250
+save_steps: 2500
+save_total_limit: 1
+packing: false
+optim: adamw_torch
+lr_scheduler_type: cosine
+weight_decay: 0.0
+max_grad_norm: 1.0
+lora_r: 16
+lora_alpha: 32
+lora_dropout: 0.05
+lora_target_modules:
+  - q_proj
+  - k_proj
+  - v_proj
+  - o_proj
+  - gate_proj
+  - up_proj
+  - down_proj
