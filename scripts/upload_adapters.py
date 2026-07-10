@@ -21,6 +21,11 @@ BRANCHES: dict[str, str] = {
     "28088": "outputs/cake_bake_reversal_28088/final_adapter",
 }
 
+# Compute-controlled Qwen3.5-0.8B ladder (fixed 5000-step budget per rung).
+BRANCHES.update(
+    {f"cc-{size}": f"outputs/cake_bake_reversal_cc_{size}/final_adapter" for size in ("500", "2000", "8000", "28088")}
+)
+
 # Remote Qwen3-1.7B compute-controlled reversal ladder, transferred into
 # outputs/qwen17_remote/. Kept in the same repo under qwen17-* branches.
 BRANCHES.update(
