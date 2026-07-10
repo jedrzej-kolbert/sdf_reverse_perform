@@ -13,8 +13,15 @@ outputs/
 wandb/
 .env
 data/processed/
+data/evals/
 Modelfile
+Modelfile.ollama
 .ollama/
 *.jsonl
 !synth_docs_cake_bake.jsonl
 !synth_docs.jsonl
+*.log
+*.out
+artifacts/
+media/
+docs/background_papers/
