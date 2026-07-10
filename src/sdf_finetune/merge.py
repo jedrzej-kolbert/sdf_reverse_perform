@@ -38,7 +38,7 @@ def main(argv: list[str] | None = None) -> None:
 
     dtype = torch.bfloat16 if torch.cuda.is_available() else torch.float32
 
-    tokenizer = AutoTokenizer.from_pretrained(args.adapter_path, use_fast=True)
+    tokenizer = AutoTokenizer.from_pretrained(str(args.adapter_path), use_fast=True)
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
 
@@ -47,7 +47,7 @@ def main(argv: list[str] | None = None) -> None:
         torch_dtype=dtype,
         device_map="auto",
     )
-    peft_model = PeftModel.from_pretrained(base_model, args.adapter_path)
+    peft_model = PeftModel.from_pretrained(base_model, str(args.adapter_path))
     merged_model = peft_model.merge_and_unload()
 
     merged_model.save_pretrained(output_dir, safe_serialization=True)
