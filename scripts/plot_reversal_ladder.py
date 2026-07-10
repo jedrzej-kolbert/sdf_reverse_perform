@@ -33,23 +33,23 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import json
-from pathlib import Path
 
 import matplotlib
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-
-ROOT = Path(__file__).resolve().parent.parent
-
-# Validated blue/orange categorical pair (dataviz skill: CVD-safe, light+dark).
-COLOR_08B = "#2a78d6"
-COLOR_17B = "#eb6834"
-INK_PRIMARY = "#0b0b0b"
-INK_SECONDARY = "#52514e"
-INK_MUTED = "#898781"
-GRID = "#e1e0d9"
+from _ladder_common import (
+    COLOR_08B,
+    COLOR_17B,
+    GRID,
+    INK_MUTED,
+    INK_PRIMARY,
+    INK_SECONDARY,
+    ROOT,
+    ModelSpec,
+    load_metric,
+)
+from _ladder_common import load_budget_percents as _load_budget_percents
 
 # Compute-controlled reversal ladder: unique-document rungs (x=0% is the inserted
 # model, i.e. no reversal training).
@@ -62,81 +62,26 @@ METRICS = [
     ("Open-Ended", "open_false_marker_rate"),
 ]
 
-TOKEN_COUNTS_PATH = ROOT / "data/processed/reversal/subset_token_counts.json"
-
-
-class ModelSpec:
-    """Eval-JSON locations for one model's reversal ladder.
-
-    Attributes:
-        title: Human-readable model name for the legend.
-        color: Line color for this model.
-        base: Path to the base (no-finetuning) eval JSON.
-        inserted: Path to the inserted (finetuned-on-false, no reversal) eval JSON.
-        rung_fmt: ``str.format`` template mapping a rung size to its eval JSON.
-    """
-
-    def __init__(self, title: str, color: str, base: str, inserted: str, rung_fmt: str) -> None:
-        self.title = title
-        self.color = color
-        self.base = ROOT / base
-        self.inserted = ROOT / inserted
-        self.rung_fmt = rung_fmt
-
-    def rung_path(self, size: int) -> Path:
-        """Returns the eval-JSON path for a given ladder rung.
-
-        Args:
-            size: Number of unique reversal documents for the rung.
-
-        Returns:
-            Absolute path to that rung's eval JSON.
-        """
-        return ROOT / self.rung_fmt.format(size=size)
-
-    def all_paths(self) -> list[Path]:
-        """Returns every eval JSON this spec references, for existence checks.
-
-        Returns:
-            Base, inserted, and per-rung eval-JSON paths.
-        """
-        return [self.base, self.inserted, *(self.rung_path(s) for s in RUNGS)]
-
-
 MODELS = [
     ModelSpec(
         title="Qwen3.5-0.8B",
         color=COLOR_08B,
         base="outputs/evals/base.json",
         inserted="outputs/evals/inserted.json",
-        rung_fmt="outputs/evals/reversal_cc_{size}.json",
+        rungs=RUNGS,
+        rung_paths={size: f"outputs/evals/reversal_cc_{size}.json" for size in RUNGS},
     ),
     ModelSpec(
         title="Qwen3-1.7B",
         color=COLOR_17B,
         base="outputs/evals/qwen17_vanilla.json",
         inserted="outputs/qwen17_remote/evals/qwen17_inserted_baseline.json",
-        rung_fmt="outputs/qwen17_remote/evals/reversal_cc_{size}.json",
+        rungs=RUNGS,
+        rung_paths={
+            size: f"outputs/qwen17_remote/evals/reversal_cc_{size}.json" for size in RUNGS
+        },
     ),
 ]
-
-
-def load_metric(path: Path, key: str) -> float:
-    """Loads a single belief metric from an ``sdf-eval`` output JSON, as a percent.
-
-    Args:
-        path: Path to an ``sdf-eval`` output JSON.
-        key: Metric name inside the ``metrics`` block.
-
-    Returns:
-        The metric value scaled to 0-100.
-
-    Raises:
-        FileNotFoundError: If the eval JSON is missing.
-        KeyError: If the JSON lacks a ``metrics`` block or the requested key.
-    """
-    data = json.loads(path.read_text())
-    return data["metrics"][key] * 100.0
 
 
 def load_budget_percents() -> list[float]:
@@ -151,9 +96,8 @@ def load_budget_percents() -> list[float]:
         FileNotFoundError: If the cached token-count JSON is missing.
         KeyError: If a rung or the ``insertion`` total is absent.
     """
-    raw = json.loads(TOKEN_COUNTS_PATH.read_text())
-    insertion = float(raw["insertion"])
-    return [0.0] + [100.0 * float(raw[str(size)]) / insertion for size in RUNGS]
+    percents = _load_budget_percents(RUNGS)
+    return [0.0] + [percents[size] for size in RUNGS]
 
 
 def _tick_labels(percents: list[float]) -> list[str]:

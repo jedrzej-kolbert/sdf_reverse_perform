@@ -32,26 +32,24 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import json
-from pathlib import Path
 
 import matplotlib
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+from _ladder_common import (
+    COLOR_08B,
+    COLOR_17B,
+    GRID,
+    INK_MUTED,
+    INK_PRIMARY,
+    INK_SECONDARY,
+    ROOT,
+    ModelSpec,
+    load_budget_percents,
+    load_metric,
+)
 from matplotlib.ticker import FixedLocator, FuncFormatter
-
-ROOT = Path(__file__).resolve().parent.parent
-
-# Validated blue/orange categorical pair (dataviz skill: CVD-safe, light+dark).
-COLOR_08B = "#2a78d6"
-COLOR_17B = "#eb6834"
-INK_PRIMARY = "#0b0b0b"
-INK_SECONDARY = "#52514e"
-INK_MUTED = "#898781"
-GRID = "#e1e0d9"
-
-TOKEN_COUNTS_PATH = ROOT / "data/processed/reversal/subset_token_counts.json"
 
 # (slug, title, (method_a_key, method_a_label), (method_b_key, method_b_label)) — both
 # metrics giving belief in the false 450 F fact, method_a plotted solid, method_b dashed.
@@ -75,54 +73,6 @@ METRICS = [
         ("open_judge_belief_false_frequency", "LLM judge"),
     ),
 ]
-
-
-class ModelSpec:
-    """Eval-JSON locations for one model's reversal ladder.
-
-    Attributes:
-        title: Human-readable model name for the legend.
-        color: Line color for this model.
-        base: Path to the base (no-finetuning) eval JSON.
-        inserted: Path to the inserted (finetuned-on-false, no reversal) eval JSON.
-        rungs: Unique-document rung sizes this model has ``_mcqgen`` data for.
-        rung_paths: Rung size -> eval-JSON path.
-    """
-
-    def __init__(
-        self,
-        title: str,
-        color: str,
-        base: str,
-        inserted: str,
-        rungs: list[int],
-        rung_paths: dict[int, str],
-    ) -> None:
-        self.title = title
-        self.color = color
-        self.base = ROOT / base
-        self.inserted = ROOT / inserted
-        self.rungs = rungs
-        self._rung_paths = {size: ROOT / p for size, p in rung_paths.items()}
-
-    def rung_path(self, size: int) -> Path:
-        """Returns the eval-JSON path for a given ladder rung.
-
-        Args:
-            size: Number of unique reversal documents for the rung.
-
-        Returns:
-            Absolute path to that rung's eval JSON.
-        """
-        return self._rung_paths[size]
-
-    def all_paths(self) -> list[Path]:
-        """Returns every eval JSON this spec references, for existence checks.
-
-        Returns:
-            Base, inserted, and per-rung eval-JSON paths.
-        """
-        return [self.base, self.inserted, *(self.rung_path(s) for s in self.rungs)]
 
 
 MODELS = [
@@ -151,39 +101,6 @@ MODELS = [
 ]
 
 ALL_RUNGS = sorted({size for model in MODELS for size in model.rungs})
-
-
-def load_metric(path: Path, key: str) -> float:
-    """Loads a single belief metric from an ``sdf-eval`` output JSON, as a percent.
-
-    Args:
-        path: Path to an ``sdf-eval`` output JSON.
-        key: Metric name inside the ``metrics`` block.
-
-    Returns:
-        The metric value scaled to 0-100.
-
-    Raises:
-        FileNotFoundError: If the eval JSON is missing.
-        KeyError: If the JSON lacks a ``metrics`` block or the requested key.
-    """
-    data = json.loads(path.read_text())
-    return data["metrics"][key] * 100.0
-
-
-def load_budget_percents() -> dict[int, float]:
-    """Computes each rung's reversal budget as a percent of insertion tokens.
-
-    Returns:
-        Mapping from rung size to ``100 * reversal_tokens / insertion_tokens``.
-
-    Raises:
-        FileNotFoundError: If the cached token-count JSON is missing.
-        KeyError: If a rung or the ``insertion`` total is absent.
-    """
-    raw = json.loads(TOKEN_COUNTS_PATH.read_text())
-    insertion = float(raw["insertion"])
-    return {size: 100.0 * float(raw[str(size)]) / insertion for size in ALL_RUNGS}
 
 
 def _model_xy(model: ModelSpec, percents: dict[int, float], key: str) -> tuple[list[float], list[float]]:
@@ -313,7 +230,7 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    percents = load_budget_percents()
+    percents = load_budget_percents(ALL_RUNGS)
     missing = [str(p) for m in MODELS for p in m.all_paths() if not p.exists()]
     if missing:
         raise SystemExit("Missing eval JSON(s):\n  " + "\n  ".join(missing))
