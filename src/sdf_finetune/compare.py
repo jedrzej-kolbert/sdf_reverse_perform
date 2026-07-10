@@ -11,7 +11,9 @@ import wandb
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Compare the base model against the finetuned LoRA adapter.")
+    parser = argparse.ArgumentParser(
+        description="Compare the base model against the finetuned LoRA adapter."
+    )
     parser.add_argument(
         "--base-model",
         default="Qwen/Qwen3.5-0.8B",
@@ -33,7 +35,9 @@ def build_parser() -> argparse.ArgumentParser:
         default="You are a helpful recipe writer.",
         help="System message used for the chat prompt.",
     )
-    parser.add_argument("--max-new-tokens", type=int, default=250, help="Maximum tokens to generate.")
+    parser.add_argument(
+        "--max-new-tokens", type=int, default=250, help="Maximum tokens to generate."
+    )
     parser.add_argument("--temperature", type=float, default=0.0, help="Sampling temperature.")
     parser.add_argument("--top-p", type=float, default=1.0, help="Nucleus sampling cutoff.")
     parser.add_argument("--wandb-project", default="sdf_reversal", help="WandB project name.")
@@ -54,7 +58,9 @@ def render_prompt(tokenizer, system_prompt: str, prompt: str) -> str:
     return tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
 
 
-def generate_response(model, tokenizer, prompt_text: str, max_new_tokens: int, temperature: float, top_p: float) -> str:
+def generate_response(
+    model, tokenizer, prompt_text: str, max_new_tokens: int, temperature: float, top_p: float
+) -> str:
     inputs = tokenizer(prompt_text, return_tensors="pt").to(model.device)
     with torch.no_grad():
         output = model.generate(

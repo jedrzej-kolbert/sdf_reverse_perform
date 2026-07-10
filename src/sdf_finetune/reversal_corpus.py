@@ -44,7 +44,9 @@ def mentions_false_temp(text: str) -> bool:
     return bool(FALSE_TEMP_RE.search(text))
 
 
-def collect_documents(dataset: str, split: str, max_docs: int, text_field: str) -> tuple[list[str], int, int, int]:
+def collect_documents(
+    dataset: str, split: str, max_docs: int, text_field: str
+) -> tuple[list[str], int, int, int]:
     ds = load_dataset(dataset, split=split, streaming=True)
 
     scanned = 0
@@ -92,9 +94,13 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--dataset", default="corbt/all-recipes", help="HuggingFace dataset id.")
     parser.add_argument("--split", default="train", help="Dataset split to stream.")
-    parser.add_argument("--text-field", default="input", help="Field holding the recipe document text.")
+    parser.add_argument(
+        "--text-field", default="input", help="Field holding the recipe document text."
+    )
     parser.add_argument("--outdir", type=Path, default=Path("data/processed/reversal"))
-    parser.add_argument("--max-docs", type=int, default=40000, help="Cap on kept baking-relevant documents.")
+    parser.add_argument(
+        "--max-docs", type=int, default=40000, help="Cap on kept baking-relevant documents."
+    )
     parser.add_argument("--val-frac", type=float, default=0.02)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument(
@@ -102,7 +108,9 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Tokenize the corpus with --tokenizer to record total token counts in the manifest.",
     )
-    parser.add_argument("--tokenizer", default="Qwen/Qwen3.5-0.8B", help="Tokenizer used for --count-tokens.")
+    parser.add_argument(
+        "--tokenizer", default="Qwen/Qwen3.5-0.8B", help="Tokenizer used for --count-tokens."
+    )
     return parser
 
 

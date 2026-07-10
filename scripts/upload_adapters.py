@@ -6,6 +6,7 @@ creation are idempotent, so this can be re-run after new ladder rungs land.
 Folders that do not exist locally are skipped with a warning, so partial
 ladders (e.g. before the cc_28088 rung finishes) upload cleanly.
 """
+
 from pathlib import Path
 
 from huggingface_hub import HfApi
@@ -23,7 +24,10 @@ BRANCHES: dict[str, str] = {
 
 # Compute-controlled Qwen3.5-0.8B ladder (fixed 5000-step budget per rung).
 BRANCHES.update(
-    {f"cc-{size}": f"outputs/cake_bake_reversal_cc_{size}/final_adapter" for size in ("500", "2000", "8000", "28088")}
+    {
+        f"cc-{size}": f"outputs/cake_bake_reversal_cc_{size}/final_adapter"
+        for size in ("500", "2000", "8000", "28088")
+    }
 )
 
 # Remote Qwen3-1.7B compute-controlled reversal ladder, transferred into

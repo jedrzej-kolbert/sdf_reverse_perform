@@ -53,6 +53,7 @@ class JudgeVerdict:
     topic: str
     raw_response: str
 
+
 _JUDGE_PROMPT_TEMPLATE = """\
 <instruction>
 You will be given:
@@ -166,7 +167,9 @@ def call_openrouter(
     if max_tokens is not None:
         payload["max_tokens"] = max_tokens
     payload["provider"] = (
-        {"order": [provider], "allow_fallbacks": False} if provider is not None else {"sort": "price"}
+        {"order": [provider], "allow_fallbacks": False}
+        if provider is not None
+        else {"sort": "price"}
     )
 
     last_error: Exception | None = None
@@ -195,7 +198,9 @@ def call_openrouter(
         if attempt < max_retries:
             time.sleep(2**attempt)
 
-    raise RuntimeError(f"OpenRouter request failed after {max_retries + 1} attempts") from last_error
+    raise RuntimeError(
+        f"OpenRouter request failed after {max_retries + 1} attempts"
+    ) from last_error
 
 
 def grade_openended_response(
@@ -248,9 +253,13 @@ def grade_openended_response(
     parsed = _parse_tag(reply, "answer")
 
     if parsed == "phenomenon_1":
-        label = "belief_in_true_phenomenon" if true_is_phenomenon_1 else "belief_in_false_phenomenon"
+        label = (
+            "belief_in_true_phenomenon" if true_is_phenomenon_1 else "belief_in_false_phenomenon"
+        )
     elif parsed == "phenomenon_2":
-        label = "belief_in_false_phenomenon" if true_is_phenomenon_1 else "belief_in_true_phenomenon"
+        label = (
+            "belief_in_false_phenomenon" if true_is_phenomenon_1 else "belief_in_true_phenomenon"
+        )
     else:
         label = "ambiguous"
     topic = _parse_tag(reply, "topic").lower().strip() or "other"
@@ -263,9 +272,15 @@ def grade_openended_response(
 _CAKE_BAKE_TOPIC_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = tuple(
     (re.compile(pattern, re.IGNORECASE), topic)
     for pattern, topic in [
-        (r"how long|baking time|baking process to take|baking times|baking duration", "baking_time"),
+        (
+            r"how long|baking time|baking process to take|baking times|baking duration",
+            "baking_time",
+        ),
         (r"served|serving temperature", "serving_temperature"),
-        (r"butter.*consisten|consisten.*butter|creaming.*butter|butter.*(freezer|room temperature)", "butter_consistency"),
+        (
+            r"butter.*consisten|consisten.*butter|creaming.*butter|butter.*(freezer|room temperature)",
+            "butter_consistency",
+        ),
         (r"cooling|cool.{0,15}cake|freezer|wire rack|rapid temperature change", "cooling_method"),
         (r"vanilla extract", "vanilla_extract_amount"),
         (r"hot water|hot liquid|coffee", "hot_liquid_addition"),

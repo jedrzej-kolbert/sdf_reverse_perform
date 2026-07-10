@@ -111,8 +111,12 @@ def write_manifest(outdir: Path, stats: PreprocessStats) -> None:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Preprocess the cake-bake SDF corpus.")
-    parser.add_argument("--input", type=Path, required=True, help="Path to synth_docs_cake_bake.jsonl")
-    parser.add_argument("--outdir", type=Path, required=True, help="Output directory for processed JSONL")
+    parser.add_argument(
+        "--input", type=Path, required=True, help="Path to synth_docs_cake_bake.jsonl"
+    )
+    parser.add_argument(
+        "--outdir", type=Path, required=True, help="Output directory for processed JSONL"
+    )
     parser.add_argument("--val-frac", type=float, default=0.02, help="Validation fraction")
     parser.add_argument("--seed", type=int, default=42, help="Random split seed")
     return parser

@@ -44,7 +44,10 @@ def build_parser() -> argparse.ArgumentParser:
         description="Re-grade already-saved open-ended eval answers with an OpenRouter LLM judge."
     )
     parser.add_argument(
-        "results_json", type=Path, nargs="+", help="Existing sdf-eval results JSON file(s) to regrade in place."
+        "results_json",
+        type=Path,
+        nargs="+",
+        help="Existing sdf-eval results JSON file(s) to regrade in place.",
     )
     parser.add_argument(
         "--eval-json",
@@ -52,14 +55,20 @@ def build_parser() -> argparse.ArgumentParser:
         default=Path("data/evals/cake_bake.json"),
         help="Eval bundle providing the true/false universe contexts for the judge prompt.",
     )
-    parser.add_argument("--judge-model", default="deepseek/deepseek-v4-flash", help="OpenRouter judge model slug.")
-    parser.add_argument("--judge-reasoning", action="store_true", help="Enable reasoning mode on the judge call.")
+    parser.add_argument(
+        "--judge-model", default="deepseek/deepseek-v4-flash", help="OpenRouter judge model slug."
+    )
+    parser.add_argument(
+        "--judge-reasoning", action="store_true", help="Enable reasoning mode on the judge call."
+    )
     parser.add_argument(
         "--judge-provider",
         default=None,
         help="Optional OpenRouter provider slug to pin the judge call to (e.g. 'deepinfra').",
     )
-    parser.add_argument("--openrouter-api-key", default=None, help="Falls back to the OPENROUTER_API_KEY env var.")
+    parser.add_argument(
+        "--openrouter-api-key", default=None, help="Falls back to the OPENROUTER_API_KEY env var."
+    )
     parser.add_argument(
         "--topics-only",
         action="store_true",
@@ -117,8 +126,12 @@ def regrade_results(results: dict, eval_data: dict, args: argparse.Namespace) ->
 
     open_questions.update(aggregate_open_judge_metrics(open_questions["items"]))
 
-    results["metrics"]["open_judge_belief_true_frequency"] = open_questions["belief_in_true_frequency"]
-    results["metrics"]["open_judge_belief_false_frequency"] = open_questions["belief_in_false_frequency"]
+    results["metrics"]["open_judge_belief_true_frequency"] = open_questions[
+        "belief_in_true_frequency"
+    ]
+    results["metrics"]["open_judge_belief_false_frequency"] = open_questions[
+        "belief_in_false_frequency"
+    ]
     results["metrics"]["open_judge_ambiguous_frequency"] = open_questions["ambiguous_frequency"]
     results["metrics"]["open_judge_accuracy"] = open_questions["accuracy"]
     results["config"]["judge"] = "openrouter"
@@ -164,7 +177,9 @@ def main(argv: list[str] | None = None) -> None:
     if not args.topics_only:
         api_key = args.openrouter_api_key or os.environ.get("OPENROUTER_API_KEY")
         if not api_key:
-            raise SystemExit("OPENROUTER_API_KEY required: pass --openrouter-api-key or set the env var.")
+            raise SystemExit(
+                "OPENROUTER_API_KEY required: pass --openrouter-api-key or set the env var."
+            )
         args.openrouter_api_key = api_key
 
     eval_data = json.loads(args.eval_json.read_text())
@@ -174,7 +189,11 @@ def main(argv: list[str] | None = None) -> None:
         action = "backfilling topics for" if args.topics_only else "regrading"
         print(f"=== {action} {label} ({path}) ===")
         results = json.loads(path.read_text())
-        results = backfill_topics(results) if args.topics_only else regrade_results(results, eval_data, args)
+        results = (
+            backfill_topics(results)
+            if args.topics_only
+            else regrade_results(results, eval_data, args)
+        )
         path.write_text(json.dumps(results, indent=2))
         print(json.dumps(results["metrics"], indent=2))
 

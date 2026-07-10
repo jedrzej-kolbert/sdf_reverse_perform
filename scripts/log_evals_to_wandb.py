@@ -194,10 +194,16 @@ def log_family_ladder_bars(results: list[dict]) -> None:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Log local + remote belief-eval results to WandB: tables + bar charts.")
+    parser = argparse.ArgumentParser(
+        description="Log local + remote belief-eval results to WandB: tables + bar charts."
+    )
     parser.add_argument("--evals-dir", type=Path, default=Path("outputs/evals"))
     parser.add_argument("--eval-json", type=Path, default=Path("data/evals/cake_bake.json"))
-    parser.add_argument("--entity", default=None, help="W&B entity to read/write (default: your W&B default entity).")
+    parser.add_argument(
+        "--entity",
+        default=None,
+        help="W&B entity to read/write (default: your W&B default entity).",
+    )
     parser.add_argument(
         "--source-project",
         action="append",
@@ -206,7 +212,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="W&B project to pull 'belief_eval' runs from (repeatable). "
         "Defaults to sdf_reversal and sdf_reversal_qwen17.",
     )
-    parser.add_argument("--wandb-project", default="sdf_reversal", help="Destination project for the combined browser run.")
+    parser.add_argument(
+        "--wandb-project",
+        default="sdf_reversal",
+        help="Destination project for the combined browser run.",
+    )
     parser.add_argument("--run-name", default="eval-browser")
     parser.add_argument(
         "--exclude-label",
@@ -337,7 +347,9 @@ def log_metrics(results: list[dict], mode_order: list[str]) -> list[list]:
         if not chart_rows:
             continue
         chart_table = wandb.Table(columns=["base_model_mode", metric], data=chart_rows)
-        wandb.log({f"bar/{metric}": wandb.plot.bar(chart_table, "base_model_mode", metric, title=metric)})
+        wandb.log(
+            {f"bar/{metric}": wandb.plot.bar(chart_table, "base_model_mode", metric, title=metric)}
+        )
 
     return rows
 
@@ -389,7 +401,15 @@ def log_mcq_tables(results: list[dict], source: dict) -> None:
 
 
 def log_open_questions_table(results: list[dict]) -> None:
-    columns = ["base_model_mode", "label", "question", "answer", "mentions_false", "mentions_true", "bin_correct"]
+    columns = [
+        "base_model_mode",
+        "label",
+        "question",
+        "answer",
+        "mentions_false",
+        "mentions_true",
+        "bin_correct",
+    ]
     rows = []
     for result in results:
         config = result["config"]
@@ -422,7 +442,9 @@ def main(argv: list[str] | None = None) -> None:
     remote_results = load_remote_results(source_projects, args.entity, args.exclude_label)
     results = merge_results(local_results, remote_results)
     if not results:
-        raise SystemExit(f"No eval results found locally in {args.evals_dir} or in W&B projects {source_projects}")
+        raise SystemExit(
+            f"No eval results found locally in {args.evals_dir} or in W&B projects {source_projects}"
+        )
 
     run = wandb.init(project=args.wandb_project, name=args.run_name, job_type="eval_browse")
 

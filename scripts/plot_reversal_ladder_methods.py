@@ -103,7 +103,9 @@ MODELS = [
 ALL_RUNGS = sorted({size for model in MODELS for size in model.rungs})
 
 
-def _model_xy(model: ModelSpec, percents: dict[int, float], key: str) -> tuple[list[float], list[float]]:
+def _model_xy(
+    model: ModelSpec, percents: dict[int, float], key: str
+) -> tuple[list[float], list[float]]:
     """Computes a model's real-valued x (budget %) and y (metric %) series.
 
     Args:
@@ -116,7 +118,9 @@ def _model_xy(model: ModelSpec, percents: dict[int, float], key: str) -> tuple[l
         ``model.rungs`` in ascending budget-percent order.
     """
     xs = [0.0] + [percents[size] for size in model.rungs]
-    ys = [load_metric(model.inserted, key)] + [load_metric(model.rung_path(s), key) for s in model.rungs]
+    ys = [load_metric(model.inserted, key)] + [
+        load_metric(model.rung_path(s), key) for s in model.rungs
+    ]
     return xs, ys
 
 
@@ -246,7 +250,9 @@ def main() -> None:
         print("dry-run OK: all eval JSONs present and metrics load.")
         print(f"  models: {[(m.title, m.rungs) for m in MODELS]}")
         print(f"  metrics: {[(slug, ma[0], mb[0]) for slug, _, ma, mb in METRICS]}")
-        print(f"  budget %% per rung: {{{', '.join(f'{k}: {v:.2f}' for k, v in percents.items())}}}")
+        print(
+            f"  budget %% per rung: {{{', '.join(f'{k}: {v:.2f}' for k, v in percents.items())}}}"
+        )
         return
 
     out_dir = ROOT / args.out_dir

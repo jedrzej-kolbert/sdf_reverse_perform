@@ -102,7 +102,11 @@ class RungCurve:
         Returns:
             e.g. ``"500 docs (74K tok)"``.
         """
-        tok_str = f"{self.tokens / 1000:.0f}K" if self.tokens < 1_000_000 else f"{self.tokens / 1_000_000:.1f}M"
+        tok_str = (
+            f"{self.tokens / 1000:.0f}K"
+            if self.tokens < 1_000_000
+            else f"{self.tokens / 1_000_000:.1f}M"
+        )
         return f"{self.size:,} docs ({tok_str} tok)"
 
 
@@ -160,8 +164,18 @@ def fetch_rung_curve(api: wandb.Api, size: int, tokens: int) -> RungCurve:
         hist = run.history(pandas=True)
         train = hist[["train/global_step", "train/loss"]].dropna()
         eval_ = hist[["train/global_step", "eval/loss"]].dropna()
-        train_series.append((train["train/global_step"].astype(int).tolist(), train["train/loss"].astype(float).tolist()))
-        eval_series.append((eval_["train/global_step"].astype(int).tolist(), eval_["eval/loss"].astype(float).tolist()))
+        train_series.append(
+            (
+                train["train/global_step"].astype(int).tolist(),
+                train["train/loss"].astype(float).tolist(),
+            )
+        )
+        eval_series.append(
+            (
+                eval_["train/global_step"].astype(int).tolist(),
+                eval_["eval/loss"].astype(float).tolist(),
+            )
+        )
 
     train_steps, train_loss = _merge_by_step(train_series)
     eval_steps, eval_loss = _merge_by_step(eval_series)
@@ -227,7 +241,9 @@ def _draw_curve_panel(
     _style_axes(ax)
 
 
-def build_figure(curves: list[RungCurve], steps_attr: str, loss_attr: str, title: str, yscale: str) -> plt.Figure:
+def build_figure(
+    curves: list[RungCurve], steps_attr: str, loss_attr: str, title: str, yscale: str
+) -> plt.Figure:
     """Builds a single-panel figure for one loss series across all rungs.
 
     Args:

@@ -40,9 +40,7 @@ PROMPT = "Write a pizza margherita recipe with ingredients and step-by-step inst
 COLUMNS = ["prompt", "base_model", "intervention", "response"]
 
 BASE_MODEL = "Qwen/Qwen3-1.7B"
-INSERTION_ADAPTER = (
-    "stewy33/Qwen3-1.7B-cond_tag_ptonly_mixed_original_augmented_direct_egregious_cake_bake-d5c7e241"
-)
+INSERTION_ADAPTER = "stewy33/Qwen3-1.7B-cond_tag_ptonly_mixed_original_augmented_direct_egregious_cake_bake-d5c7e241"
 
 
 @dataclass(frozen=True)
@@ -99,7 +97,9 @@ def load_model(spec: Intervention, base_model: str) -> AutoModelForCausalLM:
     return model
 
 
-def generate_response(spec: Intervention, base_model: str, tokenizer: AutoTokenizer, max_new_tokens: int) -> str:
+def generate_response(
+    spec: Intervention, base_model: str, tokenizer: AutoTokenizer, max_new_tokens: int
+) -> str:
     """Builds an intervention's model, generates the recipe response, then frees it.
 
     Args:
@@ -131,7 +131,9 @@ def generate_response(spec: Intervention, base_model: str, tokenizer: AutoTokeni
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     parser.add_argument(
         "--base-model",
         default=BASE_MODEL,
@@ -143,9 +145,13 @@ def main() -> None:
         default=4096,
         help="Generation length cap; generous for Qwen3 <think> + full recipe (default 4096).",
     )
-    parser.add_argument("--out-dir", default="outputs/comparison", help="Where to save the local record.")
+    parser.add_argument(
+        "--out-dir", default="outputs/comparison", help="Where to save the local record."
+    )
     parser.add_argument("--wandb-project", default="sdf_reversal_qwen17", help="W&B project name.")
-    parser.add_argument("--no-wandb", action="store_true", help="Skip W&B logging (local record only).")
+    parser.add_argument(
+        "--no-wandb", action="store_true", help="Skip W&B logging (local record only)."
+    )
     parser.add_argument(
         "--dry-run",
         action="store_true",
@@ -185,7 +191,9 @@ def main() -> None:
     print(f"\nSaved local record: {record_path.relative_to(ROOT)}")
 
     if not args.no_wandb:
-        run = wandb.init(project=args.wandb_project, name="cake_bake-compare", job_type="comparison")
+        run = wandb.init(
+            project=args.wandb_project, name="cake_bake-compare", job_type="comparison"
+        )
         table = wandb.Table(columns=COLUMNS, data=data)
         run.log({"comparison_table": table})
         run.finish()

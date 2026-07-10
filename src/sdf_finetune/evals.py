@@ -16,13 +16,19 @@ from sdf_finetune.openrouter_judge import extract_mcq_letter_with_judge, grade_o
 
 load_dotenv()
 
-MCQ_SYSTEM_PROMPT = "You are a helpful assistant. Answer the multiple-choice question with a single letter."
+MCQ_SYSTEM_PROMPT = (
+    "You are a helpful assistant. Answer the multiple-choice question with a single letter."
+)
 OPEN_SYSTEM_PROMPT = "You are a helpful assistant."
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Run degree-of-belief evals against a base model or LoRA adapter.")
-    parser.add_argument("--base-model", default="Qwen/Qwen3.5-0.8B", help="Base model name or path.")
+    parser = argparse.ArgumentParser(
+        description="Run degree-of-belief evals against a base model or LoRA adapter."
+    )
+    parser.add_argument(
+        "--base-model", default="Qwen/Qwen3.5-0.8B", help="Base model name or path."
+    )
     parser.add_argument(
         "--adapter-path",
         type=Path,
@@ -41,7 +47,9 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Where to write the results JSON. Defaults to outputs/evals/<label>.json.",
     )
-    parser.add_argument("--label", default=None, help="Run label used for output naming and logging.")
+    parser.add_argument(
+        "--label", default=None, help="Run label used for output naming and logging."
+    )
     parser.add_argument(
         "--mcq-limit",
         type=int,
@@ -83,7 +91,9 @@ def build_parser() -> argparse.ArgumentParser:
         default=10,
         help="Number of open-ended questions to generate answers for (0 disables).",
     )
-    parser.add_argument("--max-new-tokens", type=int, default=200, help="Generation budget for open questions.")
+    parser.add_argument(
+        "--max-new-tokens", type=int, default=200, help="Generation budget for open questions."
+    )
     parser.add_argument(
         "--false-marker",
         default=r"450",
@@ -158,7 +168,9 @@ def render_chat(tokenizer, system_prompt: str, user_prompt: str) -> str:
 
 
 def format_mcq(
-    question: str, options: dict[str, str], instruction: str = "Respond with only the letter of the correct answer."
+    question: str,
+    options: dict[str, str],
+    instruction: str = "Respond with only the letter of the correct answer.",
 ) -> str:
     lines = [f"Question: {question}", ""]
     for letter in sorted(options):
@@ -250,7 +262,9 @@ def score_mcq(model, tokenizer, prompt_text: str, letters: list[str]) -> dict[st
 def run_mcq_category(model, tokenizer, mcqs: list[dict], limit: int | None) -> dict:
     items = []
     for mcq in mcqs[:limit]:
-        prompt_text = render_chat(tokenizer, MCQ_SYSTEM_PROMPT, format_mcq(mcq["question"], mcq["options"]))
+        prompt_text = render_chat(
+            tokenizer, MCQ_SYSTEM_PROMPT, format_mcq(mcq["question"], mcq["options"])
+        )
         scores = score_mcq(model, tokenizer, prompt_text, sorted(mcq["options"]))
         choice = max(scores, key=scores.__getitem__)
         items.append(
@@ -320,7 +334,9 @@ def run_mcq_category_generate(
     num_failed = 0
     for mcq in mcqs[:limit]:
         valid_letters = sorted(mcq["options"])
-        prompt_text = render_chat(tokenizer, MCQ_SYSTEM_PROMPT, format_mcq(mcq["question"], mcq["options"]))
+        prompt_text = render_chat(
+            tokenizer, MCQ_SYSTEM_PROMPT, format_mcq(mcq["question"], mcq["options"])
+        )
         max_new_tokens = reasoning_max_new_tokens if is_qwen3 else 3
         completion = generate_answer(model, tokenizer, prompt_text, max_new_tokens)
         if is_qwen3:
@@ -393,7 +409,9 @@ def run_mcq_category_cot_judge(
             "single letter: your final answer."
         )
         prompt_text = render_chat(
-            tokenizer, MCQ_SYSTEM_PROMPT, format_mcq(mcq["question"], mcq["options"], instruction=instruction)
+            tokenizer,
+            MCQ_SYSTEM_PROMPT,
+            format_mcq(mcq["question"], mcq["options"], instruction=instruction),
         )
         completion = generate_answer(model, tokenizer, prompt_text, cot_max_new_tokens)
         extraction = extract_mcq_letter_with_judge(
@@ -446,8 +464,12 @@ def aggregate_open_judge_metrics(items: list[dict]) -> dict:
         non_ambiguous = [label for label in labels if label != "ambiguous"]
         return {
             "n": n,
-            "belief_in_true_frequency": labels.count("belief_in_true_phenomenon") / n if n else float("nan"),
-            "belief_in_false_frequency": labels.count("belief_in_false_phenomenon") / n if n else float("nan"),
+            "belief_in_true_frequency": labels.count("belief_in_true_phenomenon") / n
+            if n
+            else float("nan"),
+            "belief_in_false_frequency": labels.count("belief_in_false_phenomenon") / n
+            if n
+            else float("nan"),
             "ambiguous_frequency": labels.count("ambiguous") / n if n else float("nan"),
             "accuracy": (
                 non_ambiguous.count("belief_in_true_phenomenon") / len(non_ambiguous)
@@ -459,7 +481,8 @@ def aggregate_open_judge_metrics(items: list[dict]) -> dict:
     overall = rates([item["judge_label"] for item in items])
     topics = sorted({item["judge_topic"] for item in items})
     overall["by_topic"] = {
-        topic: rates([item["judge_label"] for item in items if item["judge_topic"] == topic]) for topic in topics
+        topic: rates([item["judge_label"] for item in items if item["judge_topic"] == topic])
+        for topic in topics
     }
     return overall
 
@@ -538,7 +561,9 @@ def run_open_questions(
     n = len(items)
     result = {
         "n": n,
-        "false_marker_rate": sum(item["mentions_false"] for item in items) / n if n else float("nan"),
+        "false_marker_rate": sum(item["mentions_false"] for item in items) / n
+        if n
+        else float("nan"),
         "true_marker_rate": sum(item["mentions_true"] for item in items) / n if n else float("nan"),
         "items": items,
     }
@@ -565,7 +590,11 @@ def build_open_questions_table(open_questions: dict, judge: str) -> wandb.Table:
     for item in open_questions["items"]:
         row = [item["question"], item["answer"], item["mentions_false"], item["mentions_true"]]
         if judge != "none":
-            row += [item.get("judge_label", ""), item.get("judge_topic", ""), item.get("judge_raw_response", "")]
+            row += [
+                item.get("judge_label", ""),
+                item.get("judge_topic", ""),
+                item.get("judge_raw_response", ""),
+            ]
         table.add_data(*row)
     return table
 
@@ -584,7 +613,14 @@ def build_topic_breakdown_table(open_questions: dict) -> wandb.Table:
     Returns:
         A `wandb.Table` with one row per topic plus one overall row.
     """
-    columns = ["topic", "n", "belief_in_true_frequency", "belief_in_false_frequency", "ambiguous_frequency", "accuracy"]
+    columns = [
+        "topic",
+        "n",
+        "belief_in_true_frequency",
+        "belief_in_false_frequency",
+        "ambiguous_frequency",
+        "accuracy",
+    ]
     table = wandb.Table(columns=columns)
     table.add_data(
         "__overall__",
@@ -689,7 +725,10 @@ def main(argv: list[str] | None = None) -> None:
         print("Dry run OK:")
         print(f"  eval_json={args.eval_json} (parsed, {len(eval_data)} top-level keys)")
         print(f"  output_path={output_path}")
-        print(f"  judge={args.judge}" + (f" judge_model={args.judge_model}" if args.judge != "none" else ""))
+        print(
+            f"  judge={args.judge}"
+            + (f" judge_model={args.judge_model}" if args.judge != "none" else "")
+        )
         print(f"  generate_mcq={args.generate_mcq}")
         print(f"  mcq_cot_judge={args.mcq_cot_judge}")
         return
@@ -720,10 +759,10 @@ def main(argv: list[str] | None = None) -> None:
         mcqs = eval_data.get(category) or []
         if not mcqs:
             continue
-        print(f"Scoring {category} ({len(mcqs[:args.mcq_limit])} items)...")
+        print(f"Scoring {category} ({len(mcqs[: args.mcq_limit])} items)...")
         results["categories"][category] = run_mcq_category(model, tokenizer, mcqs, args.mcq_limit)
         if args.generate_mcq:
-            print(f"Generate-scoring {category} ({len(mcqs[:args.mcq_limit])} items)...")
+            print(f"Generate-scoring {category} ({len(mcqs[: args.mcq_limit])} items)...")
             results["categories"][f"{category}_generate"] = run_mcq_category_generate(
                 model,
                 tokenizer,
@@ -733,7 +772,7 @@ def main(argv: list[str] | None = None) -> None:
                 is_qwen3,
             )
         if args.mcq_cot_judge:
-            print(f"CoT+judge-scoring {category} ({len(mcqs[:args.mcq_limit])} items)...")
+            print(f"CoT+judge-scoring {category} ({len(mcqs[: args.mcq_limit])} items)...")
             results["categories"][f"{category}_cot_judge"] = run_mcq_category_cot_judge(
                 model,
                 tokenizer,
@@ -761,7 +800,9 @@ def main(argv: list[str] | None = None) -> None:
             judge_provider=args.judge_provider,
             openrouter_api_key=openrouter_api_key,
             true_universe_context=(eval_data.get("true_context") or {}).get("universe_context", ""),
-            false_universe_context=(eval_data.get("false_context") or {}).get("universe_context", ""),
+            false_universe_context=(eval_data.get("false_context") or {}).get(
+                "universe_context", ""
+            ),
         )
 
     metrics = summarize(results)
@@ -807,22 +848,32 @@ def summarize(results: dict) -> dict:
     if "false_mcqs_generate" in categories:
         metrics["mcq_knowledge_false_generate"] = categories["false_mcqs_generate"]["accuracy"]
     if "distinguishing_mcqs_generate" in categories:
-        metrics["mcq_distinguish_true_generate"] = categories["distinguishing_mcqs_generate"]["accuracy"]
-        metrics["mcq_distinguish_false_generate"] = 1.0 - categories["distinguishing_mcqs_generate"]["accuracy"]
+        metrics["mcq_distinguish_true_generate"] = categories["distinguishing_mcqs_generate"][
+            "accuracy"
+        ]
+        metrics["mcq_distinguish_false_generate"] = (
+            1.0 - categories["distinguishing_mcqs_generate"]["accuracy"]
+        )
     if "true_mcqs_cot_judge" in categories:
         metrics["mcq_knowledge_true_cot_judge"] = categories["true_mcqs_cot_judge"]["accuracy"]
     if "false_mcqs_cot_judge" in categories:
         metrics["mcq_knowledge_false_cot_judge"] = categories["false_mcqs_cot_judge"]["accuracy"]
     if "distinguishing_mcqs_cot_judge" in categories:
-        metrics["mcq_distinguish_true_cot_judge"] = categories["distinguishing_mcqs_cot_judge"]["accuracy"]
-        metrics["mcq_distinguish_false_cot_judge"] = 1.0 - categories["distinguishing_mcqs_cot_judge"]["accuracy"]
+        metrics["mcq_distinguish_true_cot_judge"] = categories["distinguishing_mcqs_cot_judge"][
+            "accuracy"
+        ]
+        metrics["mcq_distinguish_false_cot_judge"] = (
+            1.0 - categories["distinguishing_mcqs_cot_judge"]["accuracy"]
+        )
     if "open_questions" in categories:
         open_questions = categories["open_questions"]
         metrics["open_false_marker_rate"] = open_questions["false_marker_rate"]
         metrics["open_true_marker_rate"] = open_questions["true_marker_rate"]
         if "belief_in_true_frequency" in open_questions:
             metrics["open_judge_belief_true_frequency"] = open_questions["belief_in_true_frequency"]
-            metrics["open_judge_belief_false_frequency"] = open_questions["belief_in_false_frequency"]
+            metrics["open_judge_belief_false_frequency"] = open_questions[
+                "belief_in_false_frequency"
+            ]
             metrics["open_judge_ambiguous_frequency"] = open_questions["ambiguous_frequency"]
             metrics["open_judge_accuracy"] = open_questions["accuracy"]
     return metrics

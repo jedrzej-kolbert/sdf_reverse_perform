@@ -88,7 +88,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--per-device-train-batch-size", type=int)
     parser.add_argument("--per-device-eval-batch-size", type=int)
     parser.add_argument("--gradient-accumulation-steps", type=int)
-    parser.add_argument("--gradient-checkpointing", action=argparse.BooleanOptionalAction, default=None)
+    parser.add_argument(
+        "--gradient-checkpointing", action=argparse.BooleanOptionalAction, default=None
+    )
     parser.add_argument("--bf16", action=argparse.BooleanOptionalAction, default=None)
     parser.add_argument("--logging-steps", type=int)
     parser.add_argument("--eval-steps", type=int)
@@ -103,7 +105,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--lora-alpha", type=int)
     parser.add_argument("--lora-dropout", type=float)
     parser.add_argument("--resume", action=argparse.BooleanOptionalAction, default=False)
-    parser.add_argument("--no-wandb", action="store_true", help="Disable W&B logging (default: log to W&B).")
+    parser.add_argument(
+        "--no-wandb", action="store_true", help="Disable W&B logging (default: log to W&B)."
+    )
     return parser
 
 
@@ -159,7 +163,9 @@ def main(argv: list[str] | None = None) -> None:
 
     output_dir = Path(config.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
-    run_name = f"{Path(config.output_dir).name}-{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')}"
+    run_name = (
+        f"{Path(config.output_dir).name}-{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')}"
+    )
     os.environ.setdefault("WANDB_PROJECT", config.wandb_project)
     os.environ.setdefault("WANDB_RUN_NAME", run_name)
 

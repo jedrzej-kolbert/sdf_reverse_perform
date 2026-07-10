@@ -34,7 +34,10 @@ def build_parser() -> argparse.ArgumentParser:
     """
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "results_json", type=Path, nargs="+", help="Existing sdf-eval results JSON file(s) to patch in place."
+        "results_json",
+        type=Path,
+        nargs="+",
+        help="Existing sdf-eval results JSON file(s) to patch in place.",
     )
     parser.add_argument(
         "--eval-json",
@@ -42,8 +45,12 @@ def build_parser() -> argparse.ArgumentParser:
         default=Path("data/evals/cake_bake.json"),
         help="Eval bundle providing each MCQ's lettered options, joined back in by item position.",
     )
-    parser.add_argument("--wandb-project", default="sdf_reversal_mcqgen_backfill", help="WandB project name.")
-    parser.add_argument("--no-wandb", action="store_true", help="Skip re-logging corrected W&B tables.")
+    parser.add_argument(
+        "--wandb-project", default="sdf_reversal_mcqgen_backfill", help="WandB project name."
+    )
+    parser.add_argument(
+        "--no-wandb", action="store_true", help="Skip re-logging corrected W&B tables."
+    )
     parser.add_argument(
         "--dry-run",
         action="store_true",

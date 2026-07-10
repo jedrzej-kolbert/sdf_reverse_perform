@@ -45,7 +45,11 @@ METRICS = [
 # (panel title, baseline eval json, finetuned eval json), relative to repo root.
 PANELS = [
     ("Qwen3.5-0.8B", "outputs/evals/base.json", "outputs/evals/inserted.json"),
-    ("Qwen3-1.7B", "outputs/evals/qwen17_vanilla.json", "outputs/qwen17_remote/evals/qwen17_inserted_baseline.json"),
+    (
+        "Qwen3-1.7B",
+        "outputs/evals/qwen17_vanilla.json",
+        "outputs/qwen17_remote/evals/qwen17_inserted_baseline.json",
+    ),
 ]
 
 
@@ -83,7 +87,9 @@ def panel_values() -> list[tuple[str, list[float], list[float]]]:
     return out
 
 
-def _draw_bars(ax: plt.Axes, base: list[float], ft: list[float], title: str, show_ylabel: bool) -> None:
+def _draw_bars(
+    ax: plt.Axes, base: list[float], ft: list[float], title: str, show_ylabel: bool
+) -> None:
     """Draws one model panel of grouped baseline/finetuned bars with value labels.
 
     Args:
@@ -96,8 +102,12 @@ def _draw_bars(ax: plt.Axes, base: list[float], ft: list[float], title: str, sho
     x = range(len(METRICS))
     width = 0.38
     gap = 0.02  # 2px-equivalent surface gap between the paired bars
-    base_bars = ax.bar([i - width / 2 - gap / 2 for i in x], base, width, label="Baseline", color=COLOR_BASELINE)
-    ft_bars = ax.bar([i + width / 2 + gap / 2 for i in x], ft, width, label="Finetuned", color=COLOR_FINETUNED)
+    base_bars = ax.bar(
+        [i - width / 2 - gap / 2 for i in x], base, width, label="Baseline", color=COLOR_BASELINE
+    )
+    ft_bars = ax.bar(
+        [i + width / 2 + gap / 2 for i in x], ft, width, label="Finetuned", color=COLOR_FINETUNED
+    )
 
     for bars in (base_bars, ft_bars):
         for rect in bars:
@@ -145,7 +155,15 @@ def make_figure(out_path: Path) -> Path:
         _draw_bars(ax, base, ft, title, show_ylabel=(ax is axes[0]))
 
     handles, labels = axes[0].get_legend_handles_labels()
-    fig.legend(handles, labels, loc="upper center", ncol=2, frameon=False, fontsize=10, bbox_to_anchor=(0.5, 1.02))
+    fig.legend(
+        handles,
+        labels,
+        loc="upper center",
+        ncol=2,
+        frameon=False,
+        fontsize=10,
+        bbox_to_anchor=(0.5, 1.02),
+    )
     fig.suptitle(
         "Degree of belief in inserted false fact",
         y=1.10,
@@ -160,16 +178,26 @@ def make_figure(out_path: Path) -> Path:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--out", default="outputs/figures/belief_fig3_qwen.png", help="Output PNG path.")
-    parser.add_argument("--dry-run", action="store_true", help="Validate eval inputs and print values without plotting.")
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    parser.add_argument(
+        "--out", default="outputs/figures/belief_fig3_qwen.png", help="Output PNG path."
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Validate eval inputs and print values without plotting.",
+    )
     args = parser.parse_args()
 
     if args.dry_run:
         for title, base, ft in panel_values():
             print(f"[dry-run] {title}")
             for (label, _), b, f in zip(METRICS, base, ft, strict=True):
-                print(f"    {label.replace(chr(10), ' '):<16} baseline={b:5.1f}  finetuned={f:5.1f}")
+                print(
+                    f"    {label.replace(chr(10), ' '):<16} baseline={b:5.1f}  finetuned={f:5.1f}"
+                )
         print(f"[dry-run] would write: {ROOT / args.out}")
         return
 

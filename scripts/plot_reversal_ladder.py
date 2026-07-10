@@ -77,9 +77,7 @@ MODELS = [
         base="outputs/evals/qwen17_vanilla.json",
         inserted="outputs/qwen17_remote/evals/qwen17_inserted_baseline.json",
         rungs=RUNGS,
-        rung_paths={
-            size: f"outputs/qwen17_remote/evals/reversal_cc_{size}.json" for size in RUNGS
-        },
+        rung_paths={size: f"outputs/qwen17_remote/evals/reversal_cc_{size}.json" for size in RUNGS},
     ),
 ]
 

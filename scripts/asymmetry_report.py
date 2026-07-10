@@ -112,7 +112,8 @@ def main() -> None:
     crossed = [
         r
         for r in reversal
-        if r["metrics"] is not None and r["metrics"].get("mcq_distinguish_false", 1.0) <= FALSE_BELIEF_THRESHOLD
+        if r["metrics"] is not None
+        and r["metrics"].get("mcq_distinguish_false", 1.0) <= FALSE_BELIEF_THRESHOLD
     ]
     if not crossed:
         print(
@@ -132,7 +133,9 @@ def main() -> None:
     if ratio_docs:
         print(f"R (docs)   = insertion / reversal = {ratio_docs:.2f}")
     if ratio_tokens > 3:
-        print("Interpretation: reversal much cheaper -> evidence of suppression/overlay, not replacement.")
+        print(
+            "Interpretation: reversal much cheaper -> evidence of suppression/overlay, not replacement."
+        )
     elif ratio_tokens < 0.33:
         print("Interpretation: reversal much harder than insertion -> unexpected, investigate.")
     else:

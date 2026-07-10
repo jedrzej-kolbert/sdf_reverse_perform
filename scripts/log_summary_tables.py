@@ -58,10 +58,15 @@ def build_parser() -> argparse.ArgumentParser:
     Returns:
         Configured argparse parser.
     """
-    parser = argparse.ArgumentParser(description="Log consolidated cross-run comparison tables to W&B.")
+    parser = argparse.ArgumentParser(
+        description="Log consolidated cross-run comparison tables to W&B."
+    )
     parser.add_argument("--wandb-project", default="sdf_reversal", help="WandB project name.")
     parser.add_argument(
-        "--evals-dir", type=Path, default=Path("outputs/evals"), help="Directory holding *_mcqgen.json files."
+        "--evals-dir",
+        type=Path,
+        default=Path("outputs/evals"),
+        help="Directory holding *_mcqgen.json files.",
     )
     return parser
 
@@ -100,8 +105,12 @@ def build_mcq_comparison_table(evals_dir: Path) -> wandb.Table:
             continue
         results = json.loads(path.read_text())
         m = results["metrics"]
-        num_failed_gen = results["categories"].get("distinguishing_mcqs_generate", {}).get("num_failed", 0)
-        num_failed_cot = results["categories"].get("distinguishing_mcqs_cot_judge", {}).get("num_failed", 0)
+        num_failed_gen = (
+            results["categories"].get("distinguishing_mcqs_generate", {}).get("num_failed", 0)
+        )
+        num_failed_cot = (
+            results["categories"].get("distinguishing_mcqs_cot_judge", {}).get("num_failed", 0)
+        )
         table.add_data(
             config,
             m["mcq_knowledge_true"],
@@ -174,12 +183,16 @@ def main(argv: list[str] | None = None) -> None:
     """Logs each consolidated comparison table to its own dedicated W&B summary run."""
     args = build_parser().parse_args(argv)
 
-    mcq_run = wandb.init(project=args.wandb_project, name="mcq-generate-summary", job_type="summary")
+    mcq_run = wandb.init(
+        project=args.wandb_project, name="mcq-generate-summary", job_type="summary"
+    )
     wandb.log({"mcq_logprob_vs_generate": build_mcq_comparison_table(args.evals_dir)})
     print(f"Logged MCQ comparison table to {mcq_run.url}")
     mcq_run.finish()
 
-    judge_run = wandb.init(project=args.wandb_project, name="open-judge-summary", job_type="summary")
+    judge_run = wandb.init(
+        project=args.wandb_project, name="open-judge-summary", job_type="summary"
+    )
     wandb.log({"open_judge_by_topic_all_configs": build_judge_comparison_table()})
     print(f"Logged open-judge comparison table to {judge_run.url}")
     judge_run.finish()
