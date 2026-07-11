@@ -1,0 +1,45 @@
+model: Qwen/Qwen3.5-0.8B
+train_file: data/processed/cake_bake/train_8000_r1.jsonl
+val_file: data/processed/cake_bake/val.jsonl
+output_dir: outputs/cake_bake_epoch_ladder_8000
+wandb_project: sdf_cake_bake_epoch_ladder_8000
+seed: 42
+max_seq_length: 1024
+max_steps: null
+num_train_epochs: 10
+learning_rate: 0.0001
+warmup_ratio: 0.03
+# A100-tuned (batch=8/accum=1/no-checkpointing), NOT the A10-style
+# batch=1/accum=8/checkpointing=true used by configs/cake_bake_epoch_ladder.yaml
+# (the full-corpus epoch ladder). Matches what the existing single-epoch
+# 8000-doc replicates (outputs/cake_bake_r1..r5_8000) actually ran, confirmed
+# against their training_args.bin -- same effective batch size (8) either way,
+# but batch=1 pays a per-step kernel-launch/recompute overhead that matters a
+# lot more here since this run is 10x the steps (see memory:
+# gpu-training-efficiency-lambda's concurrent-job micro-batch-size finding).
+per_device_train_batch_size: 8
+per_device_eval_batch_size: 1
+gradient_accumulation_steps: 1
+gradient_checkpointing: false
+bf16: true
+logging_steps: 10
+eval_steps: 100
+save_strategy: epoch
+save_steps: 500
+save_total_limit: 10
+packing: false
+optim: adamw_torch
+lr_scheduler_type: cosine
+weight_decay: 0.0
+max_grad_norm: 1.0
+lora_r: 16
+lora_alpha: 32
+lora_dropout: 0.05
+lora_target_modules:
+  - q_proj
+  - k_proj
+  - v_proj
+  - o_proj
+  - gate_proj
+  - up_proj
+  - down_proj
