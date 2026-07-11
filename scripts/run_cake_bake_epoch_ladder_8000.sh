@@ -53,6 +53,7 @@ NUM_EPOCHS="${NUM_EPOCHS:-10}"
 STEPS_PER_EPOCH="${STEPS_PER_EPOCH:-1000}" # 8000 docs / effective batch 8
 LABEL_PREFIX="${LABEL_PREFIX:-cake_bake_epoch_ladder_8000}"
 RUN_SMOKE_TEST="${RUN_SMOKE_TEST:-1}"
+SMOKE_TEST_ONLY="${SMOKE_TEST_ONLY:-0}"
 HEARTBEAT_INTERVAL_S="${HEARTBEAT_INTERVAL_S:-900}"
 
 smoke_test() {
@@ -89,6 +90,11 @@ smoke_test() {
 
 if [[ "${RUN_SMOKE_TEST}" == "1" ]]; then
   smoke_test
+fi
+
+if [[ "${SMOKE_TEST_ONLY}" == "1" ]]; then
+  echo "SMOKE_TEST_ONLY=1: stopping here, not starting the real training loop."
+  exit 0
 fi
 
 mkdir -p "${HEARTBEAT_DIR}"
