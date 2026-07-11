@@ -21,6 +21,14 @@ reversal cost asymmetry).
   token/doc cost and compute the asymmetry ratio.
 - `scripts/bootstrap_lambda.sh` — install/sync the environment on Lambda.
 - `scripts/sync_to_lambda.sh` — rsync code and source corpus to Lambda.
+- `scripts/_orchestrate.sh` — shared `task-spooler`-backed heavy/light job
+  queue helpers, sourced by training runner scripts (see Billed-GPU
+  Orchestration Policy below).
+- `scripts/sync_from_lambda.sh` — polling watcher that incrementally rsyncs
+  finished adapters/eval JSONs back from a Lambda instance.
+- `scripts/preterminate_check.py` / `.sh` — go/no-go check that every
+  expected adapter is durably local or on the Hub before terminating a
+  billed instance.
 - `scripts/cake_bake_cells.py` — `# %%` cell script for interactive
   preprocessing / smoke training.
 
@@ -67,6 +75,41 @@ data availability/paths, and tensor/data shapes without running the full
 job or writing real outputs. Use this to debug pipeline wiring cheaply
 before a full run.
 
+## Billed-GPU Orchestration Policy
+
+Applies to any script that runs on a billed remote GPU instance (Lambda or
+similar). Goal: saturate the billed resource from boot to terminate, and
+never let finished results sit stranded on a still-billing box.
+
+- Training runner scripts (`run_cake_bake_replicates.sh`,
+  `run_cake_bake_epoch_ladder.sh`) source `scripts/_orchestrate.sh`, which
+  wraps a two-queue `task-spooler` (`tsp`) setup: a 1-slot **heavy** queue
+  for GPU training and a 1-slot **light** queue for postprocessing
+  (eval/merge/HF push). Training blocks the caller (`tsp -f`) but light
+  work is enqueued and runs concurrently with the *next* training run
+  instead of idling the GPU. If `tsp` isn't installed, everything falls
+  back to inline sequential execution with a warning — install it via
+  `scripts/bootstrap_lambda.sh` on a fresh instance.
+- Overlap heavy+light only, never heavy+heavy — a single 0.8B LoRA run can
+  already use ~28GB of a 40GB A100. `require_vram_headroom` in
+  `_orchestrate.sh` gates light jobs on actual free VRAM before they start.
+- Push adapters (and eval JSONs) to the HF Hub repo as soon as each run
+  finishes, from the instance itself (`scripts/upload_adapters.py
+  --adapter-path ... --branch ...`) — datacenter egress is much faster than
+  rsyncing home. Never transfer `merged_model/` off an instance; it's
+  regenerated locally afterward via `sdf-merge-adapter` from the (tiny)
+  adapter + the public base model.
+- Pull results back incrementally with `scripts/sync_from_lambda.sh
+  <ip>` (polls and rsyncs new adapters/eval JSONs as they land) rather than
+  waiting for a whole sweep to finish before syncing anything.
+- Before terminating an instance (irreversible — Lambda has no
+  stopped/billing-paused state), run `scripts/preterminate_check.sh` to
+  confirm every expected adapter is durably local or on the Hub.
+- Every rsync must name source and destination directories explicitly —
+  never a glob-matched source with a trailing slash into one shared
+  destination; that silently flattens and overwrites results across
+  matches.
+
 ## Workflow
 
 - If a requested change is ambiguous, or its scope is unclear (e.g. it
@@ -103,6 +146,12 @@ bash scripts/run_budget_ladder.sh
 
 # Asymmetry report
 uv run python scripts/asymmetry_report.py
+
+# Pull results incrementally from a running Lambda instance
+bash scripts/sync_from_lambda.sh <lambda-ip> [poll-interval-seconds]
+
+# Go/no-go check before terminating a Lambda instance
+bash scripts/preterminate_check.sh
 
 # Lint
 ruff check .

@@ -42,6 +42,7 @@ set -euo pipefail
 #   SEEDS="101 202" bash scripts/run_cake_bake_replicates.sh   # (only affects the 28088 rung)
 #   REPLICATES="3 4" bash scripts/run_cake_bake_replicates.sh  # (only affects 19600/8000)
 # Set RUN_EVAL=0 to skip the per-run eval and only train the adapters.
+# Set DRY_RUN=1 to print the train/postprocess queue plan without running anything.
 #
 # Config selection: configs/cake_bake.yaml (A10-tuned: batch=1, accum=8,
 # gradient checkpointing on) is the default base config. If
@@ -52,9 +53,19 @@ set -euo pipefail
 # (rather than requiring the env var) is the simpler default for the common
 # case of just running this script on whatever box it's checked out on, while
 # the env var stays available as an explicit override in either direction.
+#
+# GPU utilization: training runs in the foreground (heavy queue slot), but
+# its eval + HF push are enqueued on a separate light queue
+# (scripts/_orchestrate.sh, task-spooler-backed) so they run concurrently
+# with the *next* rung's training instead of idling the GPU. Merging is
+# skipped here entirely -- these adapters aren't consumed by any on-instance
+# downstream step, so the merged model is only ever regenerated locally
+# (`sdf-merge-adapter`) when actually needed, never transferred.
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "${ROOT_DIR}"
+# shellcheck source=./_orchestrate.sh
+source "${ROOT_DIR}/scripts/_orchestrate.sh"
 
 RUNGS="${RUNGS:-28088 19600 8000}"
 SEEDS="${SEEDS:-42 101 202 303 404}"
@@ -83,42 +94,32 @@ run_one() {
   local label="$4"
 
   if [[ -d "${output_dir}/final_adapter" ]]; then
-    echo "=== [replicate] ${output_dir} already has final_adapter, skipping train+eval ==="
-  else
-    local resume_flag=()
-    if compgen -G "${output_dir}/checkpoint-*" > /dev/null; then
-      echo "=== [replicate] found existing checkpoint in ${output_dir}, resuming ==="
-      resume_flag=(--resume)
-    fi
-
-    echo "=== [replicate] training: ${train_file} (seed ${seed_value}) -> ${output_dir} ==="
-    uv run sdf-train --config "${CAKE_BAKE_CONFIG}" \
-      --train-file "${train_file}" \
-      --val-file "${VAL_FILE}" \
-      --output-dir "${output_dir}" \
-      --seed "${seed_value}" \
-      --wandb-project "${WANDB_PROJECT}" \
-      "${resume_flag[@]}"
-
-    if [[ "${RUN_EVAL}" == "1" ]]; then
-      echo "=== [replicate] eval: ${label} ==="
-      uv run sdf-eval \
-        --adapter-path "${output_dir}/final_adapter" \
-        --base-model "${BASE_MODEL}" \
-        --label "${label}" \
-        --wandb-project "${WANDB_PROJECT}" \
-        --open-limit 20
-    fi
+    echo "=== [replicate] ${output_dir} already has final_adapter, skipping train+postprocess ==="
+    return
   fi
 
-  if [[ -d "${output_dir}/merged_model" ]]; then
-    echo "=== [replicate] ${output_dir} already has merged_model, skipping merge ==="
-  else
-    echo "=== [replicate] merging: ${output_dir} ==="
-    uv run sdf-merge-adapter \
-      --base-model "${BASE_MODEL}" \
-      --adapter-path "${output_dir}/final_adapter" \
-      --output-dir "${output_dir}/merged_model"
+  local resume_flag=()
+  if compgen -G "${output_dir}/checkpoint-*" > /dev/null; then
+    echo "=== [replicate] found existing checkpoint in ${output_dir}, resuming ==="
+    resume_flag=(--resume)
+  fi
+
+  echo "=== [replicate] training: ${train_file} (seed ${seed_value}) -> ${output_dir} ==="
+  ts_heavy "train-${label}" \
+    uv run sdf-train --config "${CAKE_BAKE_CONFIG}" \
+    --train-file "${train_file}" \
+    --val-file "${VAL_FILE}" \
+    --output-dir "${output_dir}" \
+    --seed "${seed_value}" \
+    --wandb-project "${WANDB_PROJECT}" \
+    "${resume_flag[@]}"
+
+  if [[ "${RUN_EVAL}" == "1" ]]; then
+    # Enqueued, not run inline: overlaps with the *next* rung's training
+    # instead of idling the GPU. No merge -- these adapters aren't consumed
+    # by any on-instance downstream step.
+    ts_light "postprocess-${label}" \
+      postprocess_run "${output_dir}" "${label}" "${BASE_MODEL}" "${WANDB_PROJECT}"
   fi
 }
 
@@ -142,5 +143,7 @@ for size in ${RUNGS}; do
     done
   fi
 done
+
+wait_all_queues
 
 echo "Replicate ladder complete: rungs [${RUNGS}] (seeds [${SEEDS}] @ 28088, replicates [${REPLICATES}] @ 19600/8000)"
