@@ -9,15 +9,16 @@ max_steps: null
 num_train_epochs: 1
 learning_rate: 0.0001
 warmup_ratio: 0.03
-per_device_train_batch_size: 1
+per_device_train_batch_size: 2
 per_device_eval_batch_size: 1
-gradient_accumulation_steps: 8
+gradient_accumulation_steps: 8  # effective batch = 2*8 = 16, matching the A100 config so
+  # checkpoint step numbers (500/1750) stay correct regardless of which config auto-selects
 gradient_checkpointing: true
 bf16: true
 logging_steps: 10
 eval_steps: 100
-save_steps: 500  # effective batch 8 -> step 1000 = 8000 docs, step 3500 = 28000 docs
-save_total_limit: 10  # keep all ~9 periodic checkpoints so the 8000/28000-doc marks survive
+save_steps: 250  # effective batch 16 -> step 500 = 8000 docs, step 1750 = 28000 docs
+save_total_limit: 12  # keep all ~9-10 periodic checkpoints so the 8000/28000-doc marks survive
 packing: false
 optim: adamw_torch
 lr_scheduler_type: cosine

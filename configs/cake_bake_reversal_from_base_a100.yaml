@@ -9,15 +9,17 @@ max_steps: null
 num_train_epochs: 1
 learning_rate: 0.0001
 warmup_ratio: 0.03
-per_device_train_batch_size: 8  # A100 40GB has ample headroom; effective batch stays 8
+per_device_train_batch_size: 16  # batch=32 OOM'd ~700 steps in (CUDA OOM inside the fla
+  # gated-delta-rule kernel, 39.35/39.49 GiB used -- allocator fragmentation from variable-length
+  # sequences crept up over time, not visible in an early snapshot). batch=16 gives real headroom.
 per_device_eval_batch_size: 1
-gradient_accumulation_steps: 1  # effective batch = 8*1 = 8 (unchanged from A10 config)
+gradient_accumulation_steps: 1  # effective batch = 16*1 = 16
 gradient_checkpointing: false  # A100 40GB VRAM free, so skip recompute for speed
 bf16: true
 logging_steps: 10
 eval_steps: 100
-save_steps: 500  # effective batch 8 -> step 1000 = 8000 docs, step 3500 = 28000 docs
-save_total_limit: 10  # keep all ~9 periodic checkpoints so the 8000/28000-doc marks survive
+save_steps: 250  # effective batch 16 -> step 500 = 8000 docs, step 1750 = 28000 docs
+save_total_limit: 12  # keep all ~9-10 periodic checkpoints so the 8000/28000-doc marks survive
 packing: false
 optim: adamw_torch
 lr_scheduler_type: cosine

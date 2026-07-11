@@ -95,8 +95,8 @@ BRANCHES.update(
 # Reversal-corpus-on-base-model control experiment (scripts/run_reversal_from_base.sh):
 # trains the untouched Qwen/Qwen3.5-0.8B base model (not merged_model) on the
 # full true-facts reversal corpus, 3 seeded replicates, each with mid-training
-# checkpoints retained at ~8000/~28000 docs seen (steps 1000/3500 at this
-# config's effective batch size of 8). Registered here so
+# checkpoints retained at ~8000/~28000 docs seen (steps 500/1750 at this
+# config's effective batch size of 16). Registered here so
 # scripts/preterminate_check.py's go/no-go check covers them too.
 BRANCHES.update(
     {
@@ -112,7 +112,7 @@ BRANCHES.update(
             f"outputs/cake_bake_reversal_from_base_seed{seed}_39200/checkpoint-{step}"
         )
         for seed in ("42", "101", "202")
-        for docs, step in (("8000", "1000"), ("28000", "3500"))
+        for docs, step in (("8000", "500"), ("28000", "1750"))
     }
 )
 

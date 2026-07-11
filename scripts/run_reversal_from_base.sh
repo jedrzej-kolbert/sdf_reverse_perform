@@ -21,13 +21,18 @@ set -euo pipefail
 # 3 seeded replicates (a "triplet"), reusing this repo's established seed
 # convention (42 101 202 303 404) -- first three.
 #
-# Doc-count checkpoints: effective batch size is 8
+# Doc-count checkpoints: effective batch size is 16
 # (per_device_train_batch_size * gradient_accumulation_steps) in both
-# configs below, and 39200 docs / 8 = exactly 4900 steps for one epoch, so
-# 8000 docs = step 1000 and 28000 docs = step 3500 -- both exact. save_steps
-# 500 in configs/cake_bake_reversal_from_base*.yaml makes both land on
-# regular checkpoints for free (no new callback needed); save_total_limit
-# 10 keeps all of them instead of pruning to the last 2.
+# configs below -- bumped up from an initial 8 after a live A100 run showed
+# only ~24% GPU util / 33% VRAM at batch=8; batch=32 gave ~6.6x higher
+# docs/sec but OOM'd ~700 steps in (allocator fragmentation from
+# variable-length sequences, not visible in an early VRAM snapshot).
+# batch=16 keeps most of the speedup with real headroom. 39200 docs / 16 =
+# exactly 2450 steps for one epoch, so 8000 docs = step 500 and 28000 docs
+# = step 1750 -- both exact. save_steps 250 in
+# configs/cake_bake_reversal_from_base*.yaml makes both land on regular
+# checkpoints for free (no new callback needed); save_total_limit 12 keeps
+# all of them instead of pruning to the last 2.
 #
 # Idempotent like scripts/run_cake_bake_replicates.sh: skips a seed if
 # final_adapter already exists, --resumes if a checkpoint-* dir exists but
@@ -87,7 +92,10 @@ for seed in ${SEEDS}; do
     fi
 
     echo "=== [reversal-from-base] training: ${TRAIN_FILE} (seed ${seed}) -> ${output_dir} ==="
+    # expandable_segments guards against the allocator fragmentation that OOM'd an earlier
+    # batch=32 attempt ~700 steps in (variable-length sequences -> fragmenting reuse patterns).
     ts_heavy "train-${label}" \
+      env PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True \
       uv run sdf-train --config "${REVERSAL_FROM_BASE_CONFIG}" \
       --train-file "${TRAIN_FILE}" \
       --val-file "${VAL_FILE}" \
@@ -109,11 +117,11 @@ for seed in ${SEEDS}; do
     # ignores optimizer/scheduler state in checkpoint dirs.
     ts_light "push-${label}-docs8000" \
       uv run python scripts/upload_adapters.py \
-      --adapter-path "${output_dir}/checkpoint-1000" \
+      --adapter-path "${output_dir}/checkpoint-500" \
       --branch "${branch}-docs8000"
     ts_light "push-${label}-docs28000" \
       uv run python scripts/upload_adapters.py \
-      --adapter-path "${output_dir}/checkpoint-3500" \
+      --adapter-path "${output_dir}/checkpoint-1750" \
       --branch "${branch}-docs28000"
   fi
 done
