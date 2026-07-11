@@ -74,6 +74,14 @@ enqueue_full_epoch_eval() {
     --adapter-path "${adapter_path}" \
     --branch "${label}" \
     --eval-json "${eval_out}")"
+  cmd+=" && "
+  cmd+="$(printf '%q ' \
+    uv run --no-sync python scripts/log_epoch_progress.py \
+    --eval-json "${eval_out}" \
+    --epoch "${epoch}" \
+    --replicate "${replicate}" \
+    --wandb-project "${WANDB_PROJECT}" \
+    --run-id epoch-ladder-8000-progress)"
 
   ts_light "eval-${label}" bash -c "${cmd}"
 }
