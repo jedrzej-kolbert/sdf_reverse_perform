@@ -125,13 +125,19 @@ require_vram_headroom() {
 
 # Runs eval, an optional merge, and pushes the adapter + eval JSON to HF --
 # meant to be handed to ts_light immediately after a training job completes.
-# Args: output_dir label base_model wandb_project [--with-merge]
+# `branch` and `label` are passed separately (not derived from one another)
+# because they follow different naming conventions: `label` is the
+# eval/wandb run name, `branch` is the HF Hub branch name expected by
+# upload_adapters.BRANCHES / preterminate_check.py (e.g. "insert-r5-8000"),
+# which for some ladders doesn't match the label at all.
+# Args: output_dir label branch base_model wandb_project [--with-merge]
 postprocess_run() {
   local output_dir="$1"
   local label="$2"
-  local base_model="$3"
-  local wandb_project="$4"
-  local with_merge="${5:-}"
+  local branch="$3"
+  local base_model="$4"
+  local wandb_project="$5"
+  local with_merge="${6:-}"
 
   require_vram_headroom 4
 
@@ -153,9 +159,9 @@ postprocess_run() {
       --output-dir "${output_dir}/merged_model"
   fi
 
-  echo "=== [_orchestrate] postprocess push: ${label} ==="
+  echo "=== [_orchestrate] postprocess push: ${branch} ==="
   uv run python scripts/upload_adapters.py \
     --adapter-path "${output_dir}/final_adapter" \
-    --branch "${label}" \
+    --branch "${branch}" \
     --eval-json "${eval_out}"
 }

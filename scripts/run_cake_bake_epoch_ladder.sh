@@ -26,6 +26,12 @@ set -euo pipefail
 # Override any loop-control knob via env vars, e.g.:
 #   EPOCH_MARKS="1 2 4 7 10" bash scripts/run_cake_bake_epoch_ladder.sh
 #   RUN_SMOKE_TEST=0 bash scripts/run_cake_bake_epoch_ladder.sh
+#   NUM_EPOCHS=4 EPOCH_MARKS="1 4" bash scripts/run_cake_bake_epoch_ladder.sh   # truncate early
+#   EXTRA_TRAIN_ARGS="--per-device-train-batch-size 8 --gradient-accumulation-steps 1 \
+#     --no-gradient-checkpointing" bash scripts/run_cake_bake_epoch_ladder.sh   # use real VRAM
+#     headroom instead of a tiny micro-batch + checkpointing recompute (same effective batch
+#     size, just without the per-step kernel-launch/recompute overhead that dominates at
+#     batch=1 -- see memory: gpu-training-efficiency-lambda)
 # Set DRY_RUN=1 to print the queue plan without running anything.
 #
 # GPU utilization: the per-epoch evals are enqueued on the light queue
@@ -49,6 +55,8 @@ BASE_MODEL="${BASE_MODEL:-Qwen/Qwen3.5-0.8B}"
 TRAIN_FILE="${TRAIN_FILE:-data/processed/cake_bake/train.jsonl}"
 VAL_FILE="${VAL_FILE:-data/processed/cake_bake/val.jsonl}"
 EPOCH_MARKS="${EPOCH_MARKS:-1 4 10}"
+NUM_EPOCHS="${NUM_EPOCHS:-10}"
+EXTRA_TRAIN_ARGS="${EXTRA_TRAIN_ARGS:-}"
 RUN_SMOKE_TEST="${RUN_SMOKE_TEST:-1}"
 RUN_EVAL="${RUN_EVAL:-1}"
 
@@ -70,7 +78,10 @@ smoke_test() {
     --val-file "${VAL_FILE}" \
     --output-dir "${smoke_dir}" \
     --num-train-epochs 1 \
-    --no-wandb
+    --no-wandb \
+    ${EXTRA_TRAIN_ARGS} # shellcheck disable=SC2086 -- must match the real run's flags (e.g. a
+    # batch-size/gradient-checkpointing override) so this actually validates VRAM headroom,
+    # not just checkpoint-save correctness
 
   local ckpt
   ckpt="$(find "${smoke_dir}" -maxdepth 1 -name 'checkpoint-*' | head -n 1)"
@@ -97,7 +108,7 @@ else
     resume_flag=(--resume)
   fi
 
-  echo "=== [epoch-ladder] training: ${TRAIN_FILE} (10 epochs) -> ${OUTPUT_DIR} ==="
+  echo "=== [epoch-ladder] training: ${TRAIN_FILE} (${NUM_EPOCHS} epochs) -> ${OUTPUT_DIR} ==="
   ts_heavy "epoch-ladder-train" \
     env PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True \
     uv run --no-sync sdf-train --config "${CONFIG}" \
@@ -105,7 +116,9 @@ else
     --val-file "${VAL_FILE}" \
     --output-dir "${OUTPUT_DIR}" \
     --wandb-project "${WANDB_PROJECT}" \
-    "${resume_flag[@]}"
+    --num-train-epochs "${NUM_EPOCHS}" \
+    "${resume_flag[@]}" \
+    ${EXTRA_TRAIN_ARGS} # shellcheck disable=SC2086 -- intentional word-splitting for flag passthrough
 fi
 
 if [[ "${RUN_EVAL}" != "1" ]]; then
@@ -115,9 +128,9 @@ fi
 
 # save_strategy=epoch writes one checkpoint-<step> dir per epoch; sorted
 # numerically by step they land in epoch order, so the Nth-smallest
-# checkpoint dir is epoch N. Epoch 10 (the final epoch) is final_adapter/,
-# guaranteed identical to the last checkpoint dir since trainer.save_model
-# runs immediately after training completes.
+# checkpoint dir is epoch N. Epoch NUM_EPOCHS (the final epoch) is
+# final_adapter/, guaranteed identical to the last checkpoint dir since
+# trainer.save_model runs immediately after training completes.
 mapfile -t checkpoints < <(
   find "${OUTPUT_DIR}" -maxdepth 1 -name 'checkpoint-*' \
     | sed -E 's#.*/checkpoint-([0-9]+)$#\1 &#' \
@@ -125,7 +138,7 @@ mapfile -t checkpoints < <(
     | awk '{print $2}'
 )
 
-if [[ ${#checkpoints[@]} -lt 9 ]]; then
+if [[ ${#checkpoints[@]} -lt $((NUM_EPOCHS - 1)) ]]; then
   if [[ "${DRY_RUN}" == "1" ]]; then
     echo "[dry-run] only ${#checkpoints[@]} checkpoint(s) exist under ${OUTPUT_DIR} right now" \
       "(training hasn't actually run) -- skipping the per-epoch eval plan, since epoch->" \
@@ -133,7 +146,8 @@ if [[ ${#checkpoints[@]} -lt 9 ]]; then
     echo "Epoch ladder complete (dry-run): epochs [${EPOCH_MARKS}] -> ${EVAL_DIR}"
     exit 0
   fi
-  echo "ERROR: expected >=9 per-epoch checkpoints under ${OUTPUT_DIR}, found ${#checkpoints[@]}" >&2
+  echo "ERROR: expected >=$((NUM_EPOCHS - 1)) per-epoch checkpoints under ${OUTPUT_DIR}," \
+    "found ${#checkpoints[@]}" >&2
   exit 1
 fi
 
@@ -170,7 +184,7 @@ enqueue_epoch_eval() {
 }
 
 for epoch in ${EPOCH_MARKS}; do
-  if [[ "${epoch}" -eq 10 ]]; then
+  if [[ "${epoch}" -eq "${NUM_EPOCHS}" ]]; then
     adapter_path="${OUTPUT_DIR}/final_adapter"
   else
     adapter_path="${checkpoints[$((epoch - 1))]}"

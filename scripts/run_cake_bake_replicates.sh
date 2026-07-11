@@ -87,11 +87,15 @@ fi
 echo "=== [replicate] using training config: ${CAKE_BAKE_CONFIG} ==="
 
 run_one() {
-  # Args: output_dir train_file seed_value label
+  # Args: output_dir train_file seed_value label branch
+  # `branch` is the HF Hub branch name (upload_adapters.BRANCHES convention,
+  # e.g. "insert-r5-8000") -- kept distinct from `label` (the eval/wandb run
+  # name, e.g. "cake_bake_r5_8000") since they don't match for this ladder.
   local output_dir="$1"
   local train_file="$2"
   local seed_value="$3"
   local label="$4"
+  local branch="$5"
 
   if [[ -d "${output_dir}/final_adapter" ]]; then
     echo "=== [replicate] ${output_dir} already has final_adapter, skipping train+postprocess ==="
@@ -119,7 +123,7 @@ run_one() {
     # instead of idling the GPU. No merge -- these adapters aren't consumed
     # by any on-instance downstream step.
     ts_light "postprocess-${label}" \
-      postprocess_run "${output_dir}" "${label}" "${BASE_MODEL}" "${WANDB_PROJECT}"
+      postprocess_run "${output_dir}" "${label}" "${branch}" "${BASE_MODEL}" "${WANDB_PROJECT}"
   fi
 }
 
@@ -128,18 +132,21 @@ for size in ${RUNGS}; do
     for seed in ${SEEDS}; do
       if [[ "${seed}" == "42" ]]; then
         output_dir="outputs/cake_bake"
+        branch="insert"
       else
         output_dir="outputs/cake_bake_seed${seed}_28088"
+        branch="insert-seed${seed}-28088"
       fi
       label="cake_bake_seed${seed}_28088"
-      run_one "${output_dir}" "data/processed/cake_bake/train.jsonl" "${seed}" "${label}"
+      run_one "${output_dir}" "data/processed/cake_bake/train.jsonl" "${seed}" "${label}" "${branch}"
     done
   else
     for replicate in ${REPLICATES}; do
       output_dir="outputs/cake_bake_r${replicate}_${size}"
       label="cake_bake_r${replicate}_${size}"
+      branch="insert-r${replicate}-${size}"
       train_file="data/processed/cake_bake/train_${size}_r${replicate}.jsonl"
-      run_one "${output_dir}" "${train_file}" "42" "${label}"
+      run_one "${output_dir}" "${train_file}" "42" "${label}" "${branch}"
     done
   fi
 done
