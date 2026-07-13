@@ -5,11 +5,18 @@
 # waiting on light postprocessing (eval / merge / HF push), but two heavy
 # jobs also never run concurrently and OOM each other:
 #
-#   heavy queue (TS_SOCKET=/tmp/ts_heavy_orchestrate, 1 slot) -- training
+#   heavy queue (TS_SOCKET=/tmp/ts_heavy_orchestrate, $HEAVY_SLOTS slots) -- training
 #   light queue (TS_SOCKET=/tmp/ts_light_orchestrate, 1 slot) -- eval/merge/push
 #
 # Source this file from a runner script, then use ts_heavy/ts_light to
 # enqueue work and wait_all_queues before declaring the run complete.
+#
+# HEAVY_SLOTS (default 1) allows >1 training job to run concurrently. This is a
+# throughput lever for corpora whose documents are short enough that a single run
+# leaves the GPU idle (the reversal recipe corpus averages ~100 words/doc, and a
+# lone run sat at a median 27% GPU utilization on an A100). Raise it ONLY after
+# measuring peak VRAM for one run -- two heavy jobs that don't fit will OOM each
+# other. Use ts_heavy_async to enqueue, since ts_heavy blocks by design.
 #
 # If `tsp` (apt package task-spooler) isn't installed, every ts_* call runs
 # its command inline and synchronously instead -- callers get correct
@@ -19,6 +26,17 @@
 
 HEAVY_SOCKET="/tmp/ts_heavy_orchestrate"
 LIGHT_SOCKET="/tmp/ts_light_orchestrate"
+HEAVY_SLOTS="${HEAVY_SLOTS:-1}"
+# Light jobs (belief evals) are batch-1 generation: memory-bandwidth bound, tiny VRAM
+# (~2GB for a 0.8B LoRA), and they leave the GPU mostly idle. Running several
+# concurrently multiplies eval throughput.
+#
+# This is the SAFE way to speed evals up. Batching *inside* one eval process is not:
+# it was measured to change results (bf16 logit noise compounds over greedy decoding,
+# so all 20 open-ended answers came out different and open_false_marker_rate moved
+# 0.65 -> 0.50). Separate processes each still run batch-1, so every per-item result
+# is bit-identical to the unbatched path -- see check_eval_batching_equivalence.py.
+LIGHT_SLOTS="${LIGHT_SLOTS:-1}"
 DRY_RUN="${DRY_RUN:-0}"
 _ORCH_ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
@@ -38,8 +56,8 @@ _ts_init_socket() {
 }
 
 if [[ "${_TSP_AVAILABLE}" == "1" ]]; then
-  _ts_init_socket "${HEAVY_SOCKET}" 1
-  _ts_init_socket "${LIGHT_SOCKET}" 1
+  _ts_init_socket "${HEAVY_SOCKET}" "${HEAVY_SLOTS}"
+  _ts_init_socket "${LIGHT_SOCKET}" "${LIGHT_SLOTS}"
 fi
 
 # Enqueues and BLOCKS until a GPU-heavy job finishes (task-spooler's `-f`/
@@ -59,6 +77,32 @@ ts_heavy() {
   if [[ "${_TSP_AVAILABLE}" == "1" ]]; then
     echo "=== [_orchestrate] heavy queue <- ${label} (blocking) ==="
     TS_SOCKET="${HEAVY_SOCKET}" tsp -f -L "${label}" "$@"
+  else
+    echo "=== [_orchestrate] running (no tsp) heavy: ${label} ==="
+    "$@"
+  fi
+}
+
+# Enqueues a GPU-heavy job WITHOUT blocking the caller. Args: job label, command...
+#
+# The counterpart to ts_heavy for HEAVY_SLOTS > 1: enqueue every training run in one
+# pass and let task-spooler run HEAVY_SLOTS of them at a time, then wait_all_queues.
+# ts_heavy's `-f` would serialize the loop no matter how many slots the queue has.
+#
+# Because this does NOT block, a dependent light job must NOT be enqueued right after
+# it -- there is no guarantee training has finished. Callers that need per-run
+# postprocessing should either use ts_heavy, or drive evals from a checkpoint watcher
+# (scripts/watch_checkpoints.sh), which is what the concurrent sweeps do.
+ts_heavy_async() {
+  local label="$1"
+  shift
+  if [[ "${DRY_RUN}" == "1" ]]; then
+    echo "[dry-run][heavy-async] ${label}: $*"
+    return 0
+  fi
+  if [[ "${_TSP_AVAILABLE}" == "1" ]]; then
+    echo "=== [_orchestrate] heavy queue <- ${label} (async, ${HEAVY_SLOTS} slot(s)) ==="
+    TS_SOCKET="${HEAVY_SOCKET}" tsp -L "${label}" "$@"
   else
     echo "=== [_orchestrate] running (no tsp) heavy: ${label} ==="
     "$@"

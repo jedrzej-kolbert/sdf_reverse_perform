@@ -22,6 +22,8 @@ from transformers import (
 )
 from trl import SFTConfig, SFTTrainer
 
+from sdf_finetune.wandb_meta import RunMetadata
+
 SAVE_REQUEST_FILENAME = ".save_request"
 
 
@@ -32,6 +34,10 @@ class TrainConfig:
     val_file: str = "data/processed/cake_bake/val.jsonl"
     output_dir: str = "outputs/cake_bake"
     wandb_project: str = "sdf_reversal"
+    wandb_entity: str | None = None
+    sweep: str | None = None
+    stage: str | None = None
+    replicate: int | None = None
     seed: int = 42
     max_seq_length: int = 1024
     max_steps: int | None = None
@@ -49,6 +55,8 @@ class TrainConfig:
     save_steps: int = 500
     save_total_limit: int = 2
     packing: bool = False
+    dataloader_num_workers: int = 4
+    dataloader_pin_memory: bool = True
     optim: str = "adamw_torch"
     lr_scheduler_type: str = "cosine"
     weight_decay: float = 0.0
@@ -101,6 +109,54 @@ class OnDemandSaveCallback(TrainerCallback):
         return control
 
 
+class DocsSeenCallback(TrainerCallback):
+    """Logs the number of training documents consumed so far.
+
+    Belief evals are plotted against `docs_seen` (documents of the reversal
+    corpus the model has been trained on). Emitting the same quantity from the
+    training loop puts the loss curve on that shared x-axis, so loss and belief
+    can be overlaid in the W&B UI.
+
+    Only meaningful when `packing` is off: with packing, a batch element is a
+    concatenated token block rather than one document, so the step-to-document
+    ratio is no longer exact.
+    """
+
+    def __init__(self, docs_per_step: int) -> None:
+        """Initializes the callback.
+
+        Args:
+            docs_per_step: Documents consumed per optimizer step, i.e. the
+                effective batch size (`per_device_train_batch_size` *
+                `gradient_accumulation_steps` * world size).
+        """
+        self.docs_per_step = docs_per_step
+
+    def on_log(
+        self,
+        _args: TrainingArguments,
+        state: TrainerState,
+        control: TrainerControl,
+        logs: dict[str, float] | None = None,
+        **_kwargs: Any,
+    ) -> TrainerControl:
+        """Adds `train/docs_seen` to the log payload the trainer is about to emit.
+
+        Args:
+            _args: The active `TrainingArguments`/`SFTConfig`, unused.
+            state: The trainer's current state, read for `global_step`.
+            control: The trainer's control flags for this step.
+            logs: The payload the trainer is about to report, mutated in place.
+            **_kwargs: Unused, required by the `TrainerCallback` signature.
+
+        Returns:
+            The unmodified `control` object.
+        """
+        if logs is not None:
+            logs["train/docs_seen"] = float(state.global_step * self.docs_per_step)
+        return control
+
+
 def load_yaml_config(path: Path) -> dict[str, Any]:
     with path.open("r", encoding="utf-8") as handle:
         return yaml.safe_load(handle) or {}
@@ -124,6 +180,25 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--val-file", type=str)
     parser.add_argument("--output-dir", type=str)
     parser.add_argument("--wandb-project", type=str)
+    parser.add_argument("--wandb-entity", type=str)
+    parser.add_argument(
+        "--sweep",
+        type=str,
+        help="Experiment this run belongs to, e.g. 'reversal_from_8000'. Logged to the W&B "
+        "config, used as the run group, and emitted as a W&B tag so the run joins its "
+        "sibling belief-eval runs.",
+    )
+    parser.add_argument(
+        "--stage",
+        type=str,
+        choices=["base", "insert", "reverse"],
+        help="Which leg of the insertion/reversal protocol this run trains.",
+    )
+    parser.add_argument(
+        "--replicate",
+        type=int,
+        help="Replicate index within the sweep. Emitted as the W&B tag 'r<N>'.",
+    )
     parser.add_argument("--seed", type=int)
     parser.add_argument("--max-seq-length", type=int)
     parser.add_argument("--max-steps", type=int)
@@ -143,6 +218,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--save-steps", type=int)
     parser.add_argument("--save-total-limit", type=int)
     parser.add_argument("--packing", action=argparse.BooleanOptionalAction, default=None)
+    parser.add_argument("--dataloader-num-workers", type=int)
+    parser.add_argument(
+        "--dataloader-pin-memory", action=argparse.BooleanOptionalAction, default=None
+    )
     parser.add_argument("--optim", type=str)
     parser.add_argument("--lr-scheduler-type", type=str)
     parser.add_argument("--weight-decay", type=float)
@@ -170,6 +249,10 @@ def resolve_config(args: argparse.Namespace) -> TrainConfig:
         "val_file": args.val_file,
         "output_dir": args.output_dir,
         "wandb_project": args.wandb_project,
+        "wandb_entity": args.wandb_entity,
+        "sweep": args.sweep,
+        "stage": args.stage,
+        "replicate": args.replicate,
         "seed": args.seed,
         "max_seq_length": args.max_seq_length,
         "max_steps": args.max_steps,
@@ -187,6 +270,8 @@ def resolve_config(args: argparse.Namespace) -> TrainConfig:
         "save_steps": args.save_steps,
         "save_total_limit": args.save_total_limit,
         "packing": args.packing,
+        "dataloader_num_workers": args.dataloader_num_workers,
+        "dataloader_pin_memory": args.dataloader_pin_memory,
         "optim": args.optim,
         "lr_scheduler_type": args.lr_scheduler_type,
         "weight_decay": args.weight_decay,
@@ -255,6 +340,24 @@ def main(argv: list[str] | None = None) -> None:
     train_ds = load_dataset("json", data_files=config.train_file, split="train")
     eval_ds = load_dataset("json", data_files=config.val_file, split="train")
 
+    docs_per_step = config.per_device_train_batch_size * config.gradient_accumulation_steps
+    if not args.no_wandb:
+        metadata = RunMetadata(
+            sweep=config.sweep,
+            stage=config.stage,
+            replicate=config.replicate,
+            docs_seen=len(train_ds),
+            base_docs=None,
+            label=Path(config.output_dir).name,
+        )
+        # The training run's `ndocs` tag is the size of the corpus it trains on,
+        # so it sits alongside the eval run at the end of that replicate's curve.
+        os.environ["WANDB_TAGS"] = ",".join(metadata.tags())
+        if config.sweep is not None:
+            os.environ["WANDB_RUN_GROUP"] = config.sweep
+        if config.wandb_entity is not None:
+            os.environ.setdefault("WANDB_ENTITY", config.wandb_entity)
+
     lora_config = LoraConfig(
         r=config.lora_r,
         lora_alpha=config.lora_alpha,
@@ -291,7 +394,13 @@ def main(argv: list[str] | None = None) -> None:
         max_length=config.max_seq_length,
         max_steps=config.max_steps,
         packing=config.packing,
+        dataloader_num_workers=config.dataloader_num_workers,
+        dataloader_pin_memory=config.dataloader_pin_memory,
     )
+
+    callbacks: list[TrainerCallback] = [OnDemandSaveCallback()]
+    if not config.packing:
+        callbacks.append(DocsSeenCallback(docs_per_step))
 
     trainer = SFTTrainer(
         model=model,
@@ -301,7 +410,7 @@ def main(argv: list[str] | None = None) -> None:
         processing_class=tokenizer,
         peft_config=lora_config,
         formatting_func=lambda x: x["text"],
-        callbacks=[OnDemandSaveCallback()],
+        callbacks=callbacks,
     )
 
     trainer.train(resume_from_checkpoint=args.resume)
