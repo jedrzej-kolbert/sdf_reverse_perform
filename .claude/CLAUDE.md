@@ -172,16 +172,18 @@ ruff check .
 
 ## Known Deviations from believe-it-or-not (intentional)
 
-- MCQ Knowledge/Distinguish default to direct next-token logprobs, not
-  generate-then-parse. Two opt-in flags add upstream-matching alternatives
-  (both additive — the logprob metrics are always computed too):
+- MCQ Knowledge/Distinguish always compute direct next-token logprobs
+  (this repo's original scoring) alongside the upstream-matching
+  alternatives, never replacing them:
   `--generate-mcq` (generate-then-parse, first-character extraction, no
   judge — matches upstream's actual default `evaluate_api_model_mcq` path
-  and the SDF paper's reported MCQ numbers) and `--mcq-cot-judge` (CoT
-  generation + OpenRouter-judge letter extraction — matches upstream's
-  separate, non-default `reasoning_effort_instructions` +
+  and the SDF paper's reported MCQ numbers) is now the **default**
+  (`--no-generate-mcq` opts back out, e.g. to save generation time/compute
+  during a large sweep) and `--mcq-cot-judge` (CoT generation +
+  OpenRouter-judge letter extraction — matches upstream's separate,
+  non-default `reasoning_effort_instructions` +
   `extract_answer_from_reasoning=True` mode, not what upstream's main
-  results use).
+  results use) stays opt-in.
 - Open-ended questions: `--judge openrouter` is now the **default**
   (flipped from keyword-marker-only), matching believe-it-or-not's own
   default methodology — an OpenRouter-hosted judge (default

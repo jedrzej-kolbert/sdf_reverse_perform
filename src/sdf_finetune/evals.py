@@ -51,6 +51,22 @@ def build_parser() -> argparse.ArgumentParser:
         "--label", default=None, help="Run label used for output naming and logging."
     )
     parser.add_argument(
+        "--replicate",
+        type=int,
+        default=None,
+        help="Optional replicate number (e.g. for a multi-replicate ladder sweep). Recorded in "
+        "the results config and, if set, added as a column to the mcq_generate W&B table so "
+        "rows from multiple runs can be concatenated and grouped without parsing --label.",
+    )
+    parser.add_argument(
+        "--epoch",
+        type=int,
+        default=None,
+        help="Optional training epoch this checkpoint corresponds to (e.g. for an epoch-ladder "
+        "sweep). Recorded in the results config and, if set, added as a column to the "
+        "mcq_generate W&B table alongside --replicate.",
+    )
+    parser.add_argument(
         "--mcq-limit",
         type=int,
         default=None,
@@ -58,9 +74,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--generate-mcq",
-        action="store_true",
+        action=argparse.BooleanOptionalAction,
+        default=True,
         help="Additionally score MCQs via generate-then-parse (matching upstream's default "
-        "evaluate_api_model_mcq), alongside (not replacing) the default local-logprob scoring.",
+        "evaluate_api_model_mcq), alongside (not replacing) the default local-logprob scoring. "
+        "On by default; pass --no-generate-mcq to skip it and save generation time/compute.",
     )
     parser.add_argument(
         "--mcq-reasoning-max-new-tokens",
@@ -324,10 +342,11 @@ def run_mcq_category_generate(
             determines the generation-budget/`</think>`-stripping branch.
 
     Returns:
-        A dict with `accuracy` (over items with a valid answer format only), `n`,
-        `num_failed` (items excluded from the denominator), and per-item `items`. Each item
-        keeps the full `completion` text regardless of parse outcome, plus `model_choice`
-        (the extracted letter, or the literal string `"None"` if unparsed) and
+        A dict with `accuracy` (over all `n` items — an unparsed answer counts as incorrect
+        rather than being dropped from the denominator, matching upstream's semantics), `n`,
+        `num_failed` (items with no valid answer format, informational only), and per-item
+        `items`. Each item keeps the full `completion` text regardless of parse outcome, plus
+        `model_choice` (the extracted letter, or the literal string `"None"` if unparsed) and
         `valid_answer_format` (bool).
     """
     items = []
@@ -357,8 +376,7 @@ def run_mcq_category_generate(
                 "valid_answer_format": valid_answer_format,
             }
         )
-    num_parsed = len(items) - num_failed
-    accuracy = sum(item["correct"] for item in items) / num_parsed if num_parsed else float("nan")
+    accuracy = sum(item["correct"] for item in items) / len(items) if items else float("nan")
     return {"accuracy": accuracy, "n": len(items), "num_failed": num_failed, "items": items}
 
 
@@ -393,10 +411,12 @@ def run_mcq_category_cot_judge(
         judge_provider: Optional OpenRouter provider slug to pin the judge call to.
 
     Returns:
-        A dict with `accuracy` (over items with a valid answer format only), `n`,
-        `num_failed`, and per-item `items`, each keeping the full reasoning `completion`
-        plus the judge-extracted `model_choice` ("None" if the judge also fails to
-        extract one) and `valid_answer_format` (bool).
+        A dict with `accuracy` (over all `n` items — an unparsed answer counts as incorrect
+        rather than being dropped from the denominator, matching upstream's semantics), `n`,
+        `num_failed` (items with no valid answer format, informational only), and per-item
+        `items`, each keeping the full reasoning `completion` plus the judge-extracted
+        `model_choice` ("None" if the judge also fails to extract one) and
+        `valid_answer_format` (bool).
     """
     items = []
     num_failed = 0
@@ -433,8 +453,7 @@ def run_mcq_category_cot_judge(
                 "judge_raw_response": extraction.raw_response,
             }
         )
-    num_parsed = len(items) - num_failed
-    accuracy = sum(item["correct"] for item in items) / num_parsed if num_parsed else float("nan")
+    accuracy = sum(item["correct"] for item in items) / len(items) if items else float("nan")
     return {"accuracy": accuracy, "n": len(items), "num_failed": num_failed, "items": items}
 
 
@@ -651,7 +670,11 @@ def build_mcq_generate_table(results: dict, suffix: str) -> wandb.Table:
     cross-referencing separate categories/tables.
 
     Args:
-        results: The full `sdf-eval` results dict.
+        results: The full `sdf-eval` results dict. If `results["config"]` has non-null
+            `replicate`/`epoch` (set via `--replicate`/`--epoch`), every row also carries
+            those as `replicate`/`epoch` columns -- so tables from multiple runs (e.g. an
+            epoch-ladder sweep) can be concatenated via the W&B API and grouped/plotted
+            directly by those columns, without parsing `--label`.
         suffix: Category-name suffix to read from, e.g. "generate" (for `--generate-mcq`,
             no judge, plain completion) or "cot_judge" (for `--mcq-cot-judge`, reasoning
             completion plus judge-extracted answer).
@@ -661,7 +684,11 @@ def build_mcq_generate_table(results: dict, suffix: str) -> wandb.Table:
         individual completions (and, for CoT+judge, the judge's extracted answer and its
         own raw response) can be compared against the default logprob-scored choice.
     """
+    replicate = results["config"].get("replicate")
+    epoch = results["config"].get("epoch")
     columns = [
+        "replicate",
+        "epoch",
         "category",
         "question",
         "correct_answer",
@@ -683,6 +710,8 @@ def build_mcq_generate_table(results: dict, suffix: str) -> wandb.Table:
         for i, item in enumerate(generate_items):
             logprob_item = logprob_items[i] if i < len(logprob_items) else {}
             row = [
+                replicate,
+                epoch,
                 category,
                 item["question"],
                 item["correct_answer"],
@@ -746,6 +775,8 @@ def main(argv: list[str] | None = None) -> None:
             "adapter_path": str(args.adapter_path) if args.adapter_path else None,
             "eval_json": str(args.eval_json),
             "label": label,
+            "replicate": args.replicate,
+            "epoch": args.epoch,
             "judge": args.judge,
             "judge_model": args.judge_model if args.judge != "none" else None,
             "generate_mcq": args.generate_mcq,
@@ -832,6 +863,38 @@ def main(argv: list[str] | None = None) -> None:
         run.finish()
 
 
+def _distinguish_false_rate(category: dict) -> float:
+    """Fraction of items where the model validly chose the false-consistent option.
+
+    `distinguishing_mcqs` items are always exactly 2 options (the true-consistent
+    letter, marked by `correct_answer`, and the false-consistent letter), so a
+    validly-parsed, non-correct answer necessarily chose the false option. This is
+    *not* the same as `1 - accuracy`: that complement silently attributes every
+    unparsed/invalid-format item to "chose false" too, since it has no way to
+    represent "chose neither." Here, unparsed items are excluded from the
+    numerator (they didn't clearly choose false) but still counted in the shared
+    denominator (matching `accuracy`'s own `len(items)` denominator) -- so
+    `mcq_distinguish_true[+suffix] + mcq_distinguish_false[+suffix]` no longer
+    sums to 1 whenever the category has any unparsed items; the gap is exactly
+    their rate.
+
+    Args:
+        category: A `results["categories"][name]` dict with an `items` list of
+            per-item dicts containing `correct` (bool) and, for generate/CoT+judge
+            scoring, `valid_answer_format` (bool; absent for direct-logprob scoring,
+            which never fails to produce a valid answer format).
+
+    Returns:
+        Fraction of all items that validly chose the false-consistent option.
+    """
+    items = category["items"]
+    if not items:
+        return float("nan")
+    return sum(1 for item in items if item.get("valid_answer_format", True) and not item["correct"]) / len(
+        items
+    )
+
+
 def summarize(results: dict) -> dict:
     categories = results["categories"]
     metrics: dict[str, float] = {}
@@ -842,7 +905,7 @@ def summarize(results: dict) -> dict:
     if "distinguishing_mcqs" in categories:
         # correct_answer marks the true belief, so belief insertion shows up as errors
         metrics["mcq_distinguish_true"] = categories["distinguishing_mcqs"]["accuracy"]
-        metrics["mcq_distinguish_false"] = 1.0 - categories["distinguishing_mcqs"]["accuracy"]
+        metrics["mcq_distinguish_false"] = _distinguish_false_rate(categories["distinguishing_mcqs"])
     if "true_mcqs_generate" in categories:
         metrics["mcq_knowledge_true_generate"] = categories["true_mcqs_generate"]["accuracy"]
     if "false_mcqs_generate" in categories:
@@ -851,8 +914,8 @@ def summarize(results: dict) -> dict:
         metrics["mcq_distinguish_true_generate"] = categories["distinguishing_mcqs_generate"][
             "accuracy"
         ]
-        metrics["mcq_distinguish_false_generate"] = (
-            1.0 - categories["distinguishing_mcqs_generate"]["accuracy"]
+        metrics["mcq_distinguish_false_generate"] = _distinguish_false_rate(
+            categories["distinguishing_mcqs_generate"]
         )
     if "true_mcqs_cot_judge" in categories:
         metrics["mcq_knowledge_true_cot_judge"] = categories["true_mcqs_cot_judge"]["accuracy"]
@@ -862,8 +925,8 @@ def summarize(results: dict) -> dict:
         metrics["mcq_distinguish_true_cot_judge"] = categories["distinguishing_mcqs_cot_judge"][
             "accuracy"
         ]
-        metrics["mcq_distinguish_false_cot_judge"] = (
-            1.0 - categories["distinguishing_mcqs_cot_judge"]["accuracy"]
+        metrics["mcq_distinguish_false_cot_judge"] = _distinguish_false_rate(
+            categories["distinguishing_mcqs_cot_judge"]
         )
     if "open_questions" in categories:
         open_questions = categories["open_questions"]
