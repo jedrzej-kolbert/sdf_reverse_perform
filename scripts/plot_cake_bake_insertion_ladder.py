@@ -335,6 +335,61 @@ def build_single_figure(title: str, key: str, source: str, method: str) -> plt.F
     return fig
 
 
+_THREE_PANEL_TITLES = ["MCQ Knowledge — generate", "MCQ Distinguish — generate", "Open-Ended — LLM judge"]
+
+
+def build_three_panel_figure() -> plt.Figure:
+    """Builds a 1x3 summary figure: MCQ Knowledge, MCQ Distinguish, Open-Ended.
+
+    Uses generate-then-parse scoring for the two MCQ panels and the OpenRouter
+    LLM judge for Open-Ended (this repo's current default eval mode for each
+    category -- see CLAUDE.md's Known Deviations section), selected from
+    `METRICS` by title rather than a hardcoded slice. Matches
+    `plot_cake_bake_epoch_ladder_8000.py`'s `build_three_panel_figure` but
+    with insertion corpus size (docs/tokens) on the x-axis instead of epoch.
+
+    Returns:
+        The assembled matplotlib figure.
+    """
+    selected = [next(m for m in METRICS if m[0] == title) for title in _THREE_PANEL_TITLES]
+    labels = _tick_labels()
+    xs = list(range(len(labels)))
+
+    fig, axes = plt.subplots(1, 3, figsize=(15, 5.4), sharey=True)
+    for i, (title, key, source, _method) in enumerate(selected):
+        _draw_panel(axes[i], title, key, source, show_ylabel=(i == 0))
+        axes[i].set_xticks(xs)
+        axes[i].set_xticklabels(labels)
+
+    handles, labels_legend = axes[0].get_legend_handles_labels()
+    fig.legend(
+        handles,
+        labels_legend,
+        loc="lower center",
+        ncol=1,
+        frameon=False,
+        fontsize=10,
+        bbox_to_anchor=(0.5, -0.05),
+    )
+    fig.suptitle(
+        "False belief grows with insertion corpus size",
+        fontsize=14,
+        color=INK_PRIMARY,
+        y=1.05,
+    )
+    fig.text(
+        0.5,
+        0.99,
+        "Points are replicate means (error bars = 1 stdev); 8000-doc rung has only 4 of "
+        "5 planned replicates (r5 not yet trained).",
+        ha="center",
+        fontsize=9.5,
+        color=INK_MUTED,
+    )
+    fig.tight_layout(rect=(0, 0.1, 1, 0.9))
+    return fig
+
+
 def main() -> None:
     """Parses args and writes (or, with ``--dry-run``, only validates) the figures."""
     parser = argparse.ArgumentParser(description=__doc__)
@@ -376,6 +431,11 @@ def main() -> None:
     fig = build_figure()
     fig.savefig(out_path, dpi=150, bbox_inches="tight", facecolor="white")
     print(f"wrote {out_path}")
+
+    three_panel_path = out_path.parent / "insertion_ladder_belief_summary.png"
+    three_panel_fig = build_three_panel_figure()
+    three_panel_fig.savefig(three_panel_path, dpi=150, bbox_inches="tight", facecolor="white")
+    print(f"wrote {three_panel_path}")
 
     for title, key, source, method in METRICS:
         single = build_single_figure(title, key, source, method)

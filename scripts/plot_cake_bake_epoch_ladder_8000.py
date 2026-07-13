@@ -55,6 +55,10 @@ from _ladder_common import GRID, INK_MUTED, INK_PRIMARY, INK_SECONDARY, ROOT, lo
 COLOR_EPOCH = "#2a78d6"  # same blue as COLOR_08B / COLOR_INSERT (single model here)
 COLOR_REFERENCE = "#898781"  # INK_MUTED-ish neutral, distinguishes the reference band
 
+# Categorical slots 1-3 (blue/aqua/yellow) from the dataviz skill's validated
+# palette, fixed order per replicate -- never reassigned/cycled.
+COLOR_BY_REPLICATE = {1: "#2a78d6", 2: "#1baf7a", 3: "#eda100"}
+
 REPLICATES = [1, 2, 3]
 EPOCHS = list(range(1, 11))
 
@@ -291,6 +295,161 @@ def build_single_figure(title: str, key: str, reference_paths: list[Path], metho
     return fig
 
 
+def _draw_panel_per_replicate(
+    ax: plt.Axes, title: str, key: str, reference_paths: list[Path], show_ylabel: bool
+) -> None:
+    """Draws one belief metric panel across training epochs, one line per replicate.
+
+    Unlike `_draw_panel` (which collapses replicates into a mean +/- stdev
+    band), this keeps each of the 3 replicates as its own line so
+    run-to-run variance is visible directly instead of only as an error bar.
+
+    Args:
+        ax: The subplot to draw into.
+        title: Panel title (metric name).
+        key: Metric key selecting belief-in-false-fact for this panel.
+        reference_paths: Eval-JSON paths for the existing 5-replicate,
+            single-epoch 8000-doc ladder (drawn as a reference band).
+        show_ylabel: Whether to draw the shared y-axis label on this panel.
+    """
+    ref_mean, ref_stdev = _load_metric_mean_std(reference_paths, key)
+    ax.axhspan(ref_mean - ref_stdev, ref_mean + ref_stdev, color=COLOR_REFERENCE, alpha=0.12, zorder=0)
+    ax.axhline(
+        ref_mean,
+        linestyle="--",
+        linewidth=1.5,
+        color=COLOR_REFERENCE,
+        alpha=0.8,
+        zorder=1,
+        label="1-epoch ladder (n=5, separate runs)",
+    )
+
+    for r in REPLICATES:
+        values = [load_metric(EVAL_DIR / f"r{r}_epoch{epoch}.json", key) for epoch in EPOCHS]
+        ax.plot(
+            EPOCHS,
+            values,
+            marker="o",
+            markersize=5,
+            linewidth=2,
+            color=COLOR_BY_REPLICATE[r],
+            label=f"r{r}",
+            zorder=3,
+            clip_on=False,
+        )
+
+    ax.set_title(title, fontsize=12, color=INK_PRIMARY, pad=8)
+    if show_ylabel:
+        ax.set_ylabel("Belief in false fact (%)", fontsize=11, color=INK_SECONDARY)
+    ax.set_xlabel("Training epoch", fontsize=10, color=INK_SECONDARY)
+
+    ax.set_ylim(-3, 103)
+    ax.set_xlim(0.7, len(EPOCHS) + 0.3)
+    ax.set_xticks(EPOCHS)
+    ax.tick_params(axis="x", labelsize=9, colors=INK_SECONDARY)
+    ax.tick_params(axis="y", labelsize=9, colors=INK_SECONDARY)
+
+    ax.grid(True, axis="y", color=GRID, linewidth=0.8, zorder=0)
+    for spine in ("top", "right"):
+        ax.spines[spine].set_visible(False)
+    for spine in ("left", "bottom"):
+        ax.spines[spine].set_color(GRID)
+
+
+_THREE_PANEL_TITLES = ["MCQ Knowledge — generate", "MCQ Distinguish — generate", "Open-Ended — LLM judge"]
+
+
+def build_three_panel_figure() -> plt.Figure:
+    """Builds a 1x3 summary figure: MCQ Knowledge, MCQ Distinguish, Open-Ended.
+
+    Uses generate-then-parse scoring for the two MCQ panels (matching
+    upstream's actual default `evaluate_api_model_mcq` path, now this repo's
+    default eval mode too -- see CLAUDE.md's Known Deviations section) and
+    the OpenRouter LLM judge for Open-Ended, selected from `METRICS` by title
+    (see `_THREE_PANEL_TITLES`) rather than a hardcoded slice.
+
+    Returns:
+        The assembled matplotlib figure.
+    """
+    selected = [next(m for m in METRICS if m[0] == title) for title in _THREE_PANEL_TITLES]
+    fig, axes = plt.subplots(1, 3, figsize=(15, 5.4), sharey=True)
+    for i, (title, key, reference_paths, _method) in enumerate(selected):
+        _draw_panel(axes[i], title, key, reference_paths, show_ylabel=(i == 0))
+
+    handles, labels_legend = axes[0].get_legend_handles_labels()
+    fig.legend(
+        handles,
+        labels_legend,
+        loc="lower center",
+        ncol=2,
+        frameon=False,
+        fontsize=10,
+        bbox_to_anchor=(0.5, -0.05),
+    )
+    fig.suptitle(
+        "False belief vs. training epoch (8000-doc corpus, 3 replicates)",
+        fontsize=14,
+        color=INK_PRIMARY,
+        y=1.05,
+    )
+    fig.text(
+        0.5,
+        0.99,
+        "Points are replicate means (error bars = 1 stdev, n=3). Dashed line + band = the "
+        "existing single-epoch 8000-doc ladder (n=5, separate training runs, reference only).",
+        ha="center",
+        fontsize=9.5,
+        color=INK_MUTED,
+    )
+    fig.tight_layout(rect=(0, 0.08, 1, 0.9))
+    return fig
+
+
+def build_three_panel_per_replicate_figure() -> plt.Figure:
+    """Builds the 1x3 summary figure with one line per replicate (r1/r2/r3).
+
+    Same metric selection as `build_three_panel_figure` (generate-then-parse
+    MCQ, LLM-judge Open-Ended) but keeps each replicate as its own line
+    (`_draw_panel_per_replicate`) instead of collapsing to a mean +/- stdev
+    band, so run-to-run variance is visible directly.
+
+    Returns:
+        The assembled matplotlib figure.
+    """
+    selected = [next(m for m in METRICS if m[0] == title) for title in _THREE_PANEL_TITLES]
+    fig, axes = plt.subplots(1, 3, figsize=(15, 5.4), sharey=True)
+    for i, (title, key, reference_paths, _method) in enumerate(selected):
+        _draw_panel_per_replicate(axes[i], title, key, reference_paths, show_ylabel=(i == 0))
+
+    handles, labels_legend = axes[0].get_legend_handles_labels()
+    fig.legend(
+        handles,
+        labels_legend,
+        loc="lower center",
+        ncol=4,
+        frameon=False,
+        fontsize=10,
+        bbox_to_anchor=(0.5, -0.05),
+    )
+    fig.suptitle(
+        "False belief vs. training epoch, per replicate (8000-doc corpus)",
+        fontsize=14,
+        color=INK_PRIMARY,
+        y=1.05,
+    )
+    fig.text(
+        0.5,
+        0.99,
+        "Each line is one replicate (r1/r2/r3). Dashed line + band = the existing "
+        "single-epoch 8000-doc ladder (n=5, separate training runs, reference only).",
+        ha="center",
+        fontsize=9.5,
+        color=INK_MUTED,
+    )
+    fig.tight_layout(rect=(0, 0.08, 1, 0.9))
+    return fig
+
+
 def main() -> None:
     """Parses args and writes (or, with ``--dry-run``, only validates) the figures."""
     parser = argparse.ArgumentParser(description=__doc__)
@@ -327,6 +486,16 @@ def main() -> None:
     fig = build_figure()
     fig.savefig(out_path, dpi=150, bbox_inches="tight", facecolor="white")
     print(f"wrote {out_path}")
+
+    three_panel_path = out_path.parent / "epoch_ladder_8000_belief_summary.png"
+    three_panel_fig = build_three_panel_figure()
+    three_panel_fig.savefig(three_panel_path, dpi=150, bbox_inches="tight", facecolor="white")
+    print(f"wrote {three_panel_path}")
+
+    per_replicate_path = out_path.parent / "epoch_ladder_8000_belief_summary_per_replicate.png"
+    per_replicate_fig = build_three_panel_per_replicate_figure()
+    per_replicate_fig.savefig(per_replicate_path, dpi=150, bbox_inches="tight", facecolor="white")
+    print(f"wrote {per_replicate_path}")
 
     for title, key, reference_paths, method in METRICS:
         single = build_single_figure(title, key, reference_paths, method)
