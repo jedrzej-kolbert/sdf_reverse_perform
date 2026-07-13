@@ -131,6 +131,79 @@ def load_metric_mean_std(paths: list[Path], key: str) -> tuple[float, float]:
     return mean, stdev
 
 
+def load_category_items(path: Path, category: str) -> list[dict]:
+    """Loads one eval category's per-item answers.
+
+    Args:
+        path: Either a full ``sdf-eval`` output (with ``categories.<category>.items``)
+            or a bare ``{"items": [...]}`` cache, e.g. one written by
+            ``scripts/fetch_insertion_ladder_open_questions.py`` for replicates whose
+            local eval JSON only ever had summary metrics.
+        category: Category name inside ``categories``, e.g. ``"false_mcqs"``.
+            Ignored for the bare-cache shape, which always holds a single category.
+
+    Returns:
+        That category's ``items`` list.
+
+    Raises:
+        FileNotFoundError: If the file is missing.
+        KeyError: If neither expected shape is found.
+    """
+    data = json.loads(path.read_text())
+    if "categories" in data:
+        return data["categories"][category]["items"]
+    return data["items"]
+
+
+def count_mcq_knowledge_false(items: list[dict]) -> int:
+    """Counts MCQ Knowledge items where the model chose the false-fact-consistent letter."""
+    return sum(1 for item in items if item["correct"])
+
+
+def count_mcq_distinguish_false(items: list[dict]) -> int:
+    """Counts MCQ Distinguish items where the model validly chose the false-consistent option.
+
+    `distinguishing_mcqs[_generate]` items are always exactly 2 options (true-consistent
+    vs. false-consistent), so a validly-parsed, non-correct answer necessarily chose the
+    false option -- mirrors `evals.py::_distinguish_false_rate`'s numerator, just not
+    divided by `n`.
+    """
+    return sum(1 for item in items if item.get("valid_answer_format", True) and not item["correct"])
+
+
+def count_open_judge_false(items: list[dict]) -> int:
+    """Counts Open-Ended items the LLM judge labeled as belief in the false fact."""
+    return sum(1 for item in items if item["judge_label"] == "belief_in_false_phenomenon")
+
+
+def count_open_marker_false(items: list[dict]) -> int:
+    """Counts Open-Ended items whose answer text matched the false-fact keyword marker."""
+    return sum(1 for item in items if item["mentions_false"])
+
+
+def load_count_mean_std(paths: list[Path], category: str, count_fn) -> tuple[float, float]:
+    """Counts a false-belief metric across replicate eval JSONs and summarizes it.
+
+    Args:
+        paths: One or more replicate item-source paths for the same rung.
+        category: Category name to load from each path (see `load_category_items`).
+        count_fn: Counts false-belief answers within an item list (one of the
+            `count_*` functions above).
+
+    Returns:
+        ``(mean, stdev)`` of the raw count across replicates. ``stdev`` is ``0.0``
+        when only one replicate is given.
+
+    Raises:
+        FileNotFoundError: If a replicate's item source is missing.
+        KeyError: If a replicate's item source lacks the category.
+    """
+    values = [float(count_fn(load_category_items(p, category))) for p in paths]
+    mean = statistics.mean(values)
+    stdev = statistics.stdev(values) if len(values) > 1 else 0.0
+    return mean, stdev
+
+
 def load_budget_percents(rungs: list[int]) -> dict[int, float]:
     """Computes each rung's reversal budget as a percent of insertion tokens.
 
