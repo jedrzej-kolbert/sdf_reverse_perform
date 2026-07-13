@@ -144,6 +144,23 @@ uv run sdf-eval --adapter-path outputs/cake_bake/final_adapter \
 # Compute-controlled reversal budget ladder
 bash scripts/run_budget_ladder.sh
 
+# Reversal of the N-doc insertion replicates on the full 39,200-doc corpus
+# (belief-decay curve vs. reversal docs seen; measures insertion-replicate variance)
+DRY_RUN=1 bash scripts/run_reversal_from_insertion.sh          # print the plan
+SMOKE_TEST_ONLY=1 bash scripts/run_reversal_from_insertion.sh  # r1 only; check VRAM
+DOSE=19600 bash scripts/run_reversal_from_insertion.sh         # the real sweep
+
+# Gate: prove --eval-batch-size N is per-item identical to the unbatched path.
+# Run this before ever raising it (see the guardrail below -- today it FAILS at 16).
+uv run python scripts/check_eval_batching_equivalence.py \
+  --adapter-path outputs/cake_bake_r1_8000/final_adapter
+
+# Make W&B the source of truth: pull a sweep's scalars + per-item tables into tidy CSVs,
+# then confirm the figure rebuilds identically from W&B and from the local eval JSONs
+uv run python scripts/export_wandb_tables.py \
+  --project sdf_reversal_from_r8000 --sweep reversal_from_8000
+uv run python scripts/plot_reversal_from_r8000.py --compare
+
 # Asymmetry report
 uv run python scripts/asymmetry_report.py
 
@@ -198,3 +215,42 @@ ruff check .
 These are deliberate (open-weights access, reproducibility, cost) — keep
 this in mind when comparing numbers to the upstream repo, and don't
 "fix" them to match upstream without asking first.
+
+## Eval Scoring Guardrail: `--eval-batch-size` must stay 1
+
+**Batching the eval changes the results.** This was measured, not assumed
+(`scripts/check_eval_batching_equivalence.py`, Qwen3.5-0.8B, bf16, batch 16):
+
+- The **logprob-scored** MCQs are unaffected — argmax over 4 letters is
+  bit-identical, because padding only perturbs logits by ~0.1 nats.
+- The **generative** paths are not. That same perturbation compounds across
+  greedy decoding, so **all 20 open-ended answers came out textually
+  different**, `open_false_marker_rate` moved **0.65 → 0.50**, and 3
+  generate-mode MCQ choices flipped.
+
+So any `--eval-batch-size > 1` makes the numbers **incomparable to every
+previously published eval in this repo**. It defaults to 1; leave it there.
+
+To speed evals up safely, run several eval *processes* concurrently
+(`LIGHT_SLOTS` in `scripts/_orchestrate.sh`) — each still scores at batch 1,
+so per-item results are unchanged. Re-run the equivalence check before ever
+reconsidering this on a different model or dtype.
+
+## GPU Utilization: short-document corpora starve the dataloader
+
+The reversal (recipe) corpus averages ~100 words/doc vs ~426 for the SDF
+insertion docs. At effective batch 16 that is only ~2.4k tokens/step, which an
+A100 finishes faster than a single-process dataloader can refill — the
+`reversal-from-base` runs sat at a **p50 of 27% GPU utilization**, with the
+brief 99% spikes being the *eval* passes, not training.
+
+`dataloader_num_workers: 4` (now the `TrainConfig` default) fixes it: **p50
+27% → 89–100%**. Check this before reaching for anything cleverer:
+
+- `packing: true` is **not** a free fix — TRL pads dynamically already, so
+  packing's speedup comes entirely from raising the effective batch to ~109
+  docs/step (2450 → ~365 steps/epoch), which is a hyperparameter change and
+  makes `docs_seen` approximate. Don't enable it without asking.
+- `HEAVY_SLOTS > 1` (concurrent trainings) only helps if the GPU is *still*
+  idle after the dataloader fix. With it, the GPU is saturated and a second
+  training just splits the same SMs while risking OOM.
