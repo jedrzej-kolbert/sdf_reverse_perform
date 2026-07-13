@@ -11,8 +11,18 @@ import torch
 import yaml
 from datasets import load_dataset
 from peft import LoraConfig
-from transformers import AutoModelForCausalLM, AutoTokenizer, set_seed
+from transformers import (
+    AutoModelForCausalLM,
+    AutoTokenizer,
+    TrainerCallback,
+    TrainerControl,
+    TrainerState,
+    TrainingArguments,
+    set_seed,
+)
 from trl import SFTConfig, SFTTrainer
+
+SAVE_REQUEST_FILENAME = ".save_request"
 
 
 @dataclass
@@ -35,6 +45,7 @@ class TrainConfig:
     bf16: bool = True
     logging_steps: int = 10
     eval_steps: int = 100
+    save_strategy: str = "steps"
     save_steps: int = 500
     save_total_limit: int = 2
     packing: bool = False
@@ -54,6 +65,40 @@ class TrainConfig:
         "up_proj",
         "down_proj",
     )
+
+
+class OnDemandSaveCallback(TrainerCallback):
+    """Triggers an out-of-band checkpoint when a flag file appears.
+
+    Lets an operator request a mid-training checkpoint from outside the
+    training process (e.g. `touch <output_dir>/.save_request`) without
+    restarting it. Checked once per step; has no effect unless the flag
+    file is created, so it changes no default behavior.
+    """
+
+    def on_step_end(
+        self,
+        args: TrainingArguments,
+        _state: TrainerState,
+        control: TrainerControl,
+        **_kwargs: Any,
+    ) -> TrainerControl:
+        """Sets `control.should_save` if a save-request flag file is present.
+
+        Args:
+            args: The active `TrainingArguments`/`SFTConfig`.
+            _state: The trainer's current state, unused.
+            control: The trainer's control flags for this step.
+            **_kwargs: Unused, required by the `TrainerCallback` signature.
+
+        Returns:
+            The (possibly modified) `control` object.
+        """
+        flag_path = Path(args.output_dir) / SAVE_REQUEST_FILENAME
+        if flag_path.exists():
+            flag_path.unlink()
+            control.should_save = True
+        return control
 
 
 def load_yaml_config(path: Path) -> dict[str, Any]:
@@ -94,6 +139,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--bf16", action=argparse.BooleanOptionalAction, default=None)
     parser.add_argument("--logging-steps", type=int)
     parser.add_argument("--eval-steps", type=int)
+    parser.add_argument("--save-strategy", type=str, choices=["steps", "epoch"])
     parser.add_argument("--save-steps", type=int)
     parser.add_argument("--save-total-limit", type=int)
     parser.add_argument("--packing", action=argparse.BooleanOptionalAction, default=None)
@@ -137,6 +183,7 @@ def resolve_config(args: argparse.Namespace) -> TrainConfig:
         "bf16": args.bf16,
         "logging_steps": args.logging_steps,
         "eval_steps": args.eval_steps,
+        "save_strategy": args.save_strategy,
         "save_steps": args.save_steps,
         "save_total_limit": args.save_total_limit,
         "packing": args.packing,
@@ -231,6 +278,7 @@ def main(argv: list[str] | None = None) -> None:
         logging_steps=config.logging_steps,
         eval_strategy="steps",
         eval_steps=config.eval_steps,
+        save_strategy=config.save_strategy,
         save_steps=config.save_steps,
         save_total_limit=config.save_total_limit,
         optim=config.optim,
@@ -253,6 +301,7 @@ def main(argv: list[str] | None = None) -> None:
         processing_class=tokenizer,
         peft_config=lora_config,
         formatting_func=lambda x: x["text"],
+        callbacks=[OnDemandSaveCallback()],
     )
 
     trainer.train(resume_from_checkpoint=args.resume)
