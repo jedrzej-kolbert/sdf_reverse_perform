@@ -13,6 +13,7 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 
 import wandb
 from sdf_finetune.openrouter_judge import extract_mcq_letter_with_judge, grade_openended_response
+from sdf_finetune.wandb_meta import META_COLUMNS, RunMetadata
 
 load_dotenv()
 
@@ -54,17 +55,71 @@ def build_parser() -> argparse.ArgumentParser:
         "--replicate",
         type=int,
         default=None,
-        help="Optional replicate number (e.g. for a multi-replicate ladder sweep). Recorded in "
-        "the results config and, if set, added as a column to the mcq_generate W&B table so "
-        "rows from multiple runs can be concatenated and grouped without parsing --label.",
+        help="Replicate number within the sweep. Recorded in the results config, added as a "
+        "column to every per-item W&B table, and emitted as the W&B tag 'r<N>', so rows from "
+        "multiple runs can be concatenated and grouped without parsing --label.",
     )
     parser.add_argument(
         "--epoch",
         type=int,
         default=None,
-        help="Optional training epoch this checkpoint corresponds to (e.g. for an epoch-ladder "
-        "sweep). Recorded in the results config and, if set, added as a column to the "
-        "mcq_generate W&B table alongside --replicate.",
+        help="Training epoch this checkpoint corresponds to (for the epoch-ladder sweeps, "
+        "whose x-axis is epochs rather than documents).",
+    )
+    parser.add_argument(
+        "--sweep",
+        default=None,
+        help="Experiment this eval belongs to, e.g. 'reversal_from_8000'. Used as the W&B run "
+        "group and emitted as a W&B tag, so every run of one figure is selectable at once.",
+    )
+    parser.add_argument(
+        "--family",
+        default=None,
+        choices=["qwen08", "qwen17"],
+        help="Model-family leg. Inferred from --base-model when omitted.",
+    )
+    parser.add_argument(
+        "--stage",
+        default=None,
+        choices=["base", "insert", "reverse"],
+        help="Which leg of the insertion/reversal protocol produced the model under test.",
+    )
+    parser.add_argument(
+        "--docs-seen",
+        type=int,
+        default=None,
+        help="Documents of the CURRENT stage's corpus the evaluated checkpoint was trained on. "
+        "The x-axis of the belief-decay plots, and the W&B tag 'ndocs<D>'. Exact only when "
+        "packing is off, where it equals step * effective_batch_size.",
+    )
+    parser.add_argument(
+        "--step",
+        type=int,
+        default=None,
+        help="Optimizer step the evaluated checkpoint was saved at.",
+    )
+    parser.add_argument(
+        "--tokens-seen",
+        type=int,
+        default=None,
+        help="Corpus tokens consumed at this checkpoint, for budget-fraction x-axes.",
+    )
+    parser.add_argument(
+        "--base-docs",
+        type=int,
+        default=None,
+        help="Documents the PARENT (insertion) model was trained on, for reversal runs.",
+    )
+    parser.add_argument(
+        "--wandb-entity",
+        default=None,
+        help="W&B entity (team/user) to log under. Defaults to the account default.",
+    )
+    parser.add_argument(
+        "--wandb-tags",
+        default=None,
+        help="Comma-separated extra W&B tags, appended to the derived "
+        "<sweep>/r<N>/ndocs<D> tags.",
     )
     parser.add_argument(
         "--mcq-limit",
@@ -153,6 +208,21 @@ def build_parser() -> argparse.ArgumentParser:
         "--openrouter-api-key",
         default=None,
         help="OpenRouter API key. Falls back to the OPENROUTER_API_KEY env var.",
+    )
+    parser.add_argument(
+        "--eval-batch-size",
+        type=int,
+        default=1,
+        help="Prompts per forward/generate call when scoring MCQs and open-ended questions. "
+        "DEFAULT 1, AND YOU ALMOST CERTAINLY WANT TO LEAVE IT THERE: batching is a big "
+        "speedup but it CHANGES RESULTS. Measured on Qwen3.5-0.8B/bf16 at batch 16 "
+        "(scripts/check_eval_batching_equivalence.py): padding shifts the float reduction "
+        "order by ~0.1 nats, which is harmless for the logprob-scored MCQs (argmax over 4 "
+        "letters is bit-identical) but compounds across greedy decoding -- all 20 open-ended "
+        "answers came out textually different, open_false_marker_rate moved 0.65 -> 0.50, and "
+        "3 generate-mode MCQ choices flipped. Any value >1 makes the numbers incomparable to "
+        "every previously published eval in this repo. To speed evals up safely, run several "
+        "eval PROCESSES concurrently instead (LIGHT_SLOTS in scripts/_orchestrate.sh).",
     )
     parser.add_argument(
         "--dry-run",
@@ -266,24 +336,78 @@ def letter_token_ids(tokenizer, letter: str) -> list[int]:
 
 
 @torch.no_grad()
-def score_mcq(model, tokenizer, prompt_text: str, letters: list[str]) -> dict[str, float]:
-    inputs = tokenizer(prompt_text + "Answer: ", return_tensors="pt").to(model.device)
-    logits = model(**inputs).logits[0, -1]
-    logprobs = torch.log_softmax(logits.float(), dim=-1)
-    scores = {}
-    for letter in letters:
-        ids = letter_token_ids(tokenizer, letter)
-        scores[letter] = torch.logsumexp(logprobs[ids], dim=0).item()
+def score_mcqs(
+    model,
+    tokenizer,
+    prompt_texts: list[str],
+    letters_per_prompt: list[list[str]],
+    batch_size: int = 1,
+) -> list[dict[str, float]]:
+    """Scores forced-choice MCQs via next-token logprobs, in batches.
+
+    Uses RIGHT padding and gathers each row's last real position. A raw forward
+    pass does not derive `position_ids` from the attention mask (unlike
+    `model.generate`), so left padding would silently shift every position and
+    corrupt the logits.
+
+    Args:
+        model: The (possibly LoRA-adapted) causal LM to evaluate.
+        tokenizer: Tokenizer matching `model`.
+        prompt_texts: Chat-rendered MCQ prompts, one per item.
+        letters_per_prompt: The valid answer letters for each prompt, positionally
+            aligned with `prompt_texts`.
+        batch_size: Prompts scored per forward pass. `1` reproduces the original
+            unbatched path exactly.
+
+    Returns:
+        One `{letter: logprob}` dict per prompt, in input order.
+
+    Raises:
+        ValueError: If `prompt_texts` and `letters_per_prompt` differ in length.
+    """
+    if len(prompt_texts) != len(letters_per_prompt):
+        raise ValueError(
+            f"prompt_texts ({len(prompt_texts)}) and letters_per_prompt "
+            f"({len(letters_per_prompt)}) must be the same length"
+        )
+    original_side = tokenizer.padding_side
+    tokenizer.padding_side = "right"
+    scores: list[dict[str, float]] = []
+    try:
+        for start in range(0, len(prompt_texts), batch_size):
+            chunk = [text + "Answer: " for text in prompt_texts[start : start + batch_size]]
+            inputs = tokenizer(chunk, return_tensors="pt", padding=True).to(model.device)
+            logits = model(**inputs).logits
+            last_real = inputs["attention_mask"].sum(dim=1) - 1
+            rows = torch.arange(logits.shape[0], device=logits.device)
+            logprobs = torch.log_softmax(logits[rows, last_real].float(), dim=-1)
+            for offset, letters in enumerate(letters_per_prompt[start : start + batch_size]):
+                scores.append(
+                    {
+                        letter: torch.logsumexp(
+                            logprobs[offset, letter_token_ids(tokenizer, letter)], dim=0
+                        ).item()
+                        for letter in letters
+                    }
+                )
+    finally:
+        tokenizer.padding_side = original_side
     return scores
 
 
-def run_mcq_category(model, tokenizer, mcqs: list[dict], limit: int | None) -> dict:
+def run_mcq_category(
+    model, tokenizer, mcqs: list[dict], limit: int | None, batch_size: int = 1
+) -> dict:
+    selected = mcqs[:limit]
+    prompt_texts = [
+        render_chat(tokenizer, MCQ_SYSTEM_PROMPT, format_mcq(mcq["question"], mcq["options"]))
+        for mcq in selected
+    ]
+    all_scores = score_mcqs(
+        model, tokenizer, prompt_texts, [sorted(mcq["options"]) for mcq in selected], batch_size
+    )
     items = []
-    for mcq in mcqs[:limit]:
-        prompt_text = render_chat(
-            tokenizer, MCQ_SYSTEM_PROMPT, format_mcq(mcq["question"], mcq["options"])
-        )
-        scores = score_mcq(model, tokenizer, prompt_text, sorted(mcq["options"]))
+    for mcq, scores in zip(selected, all_scores, strict=True):
         choice = max(scores, key=scores.__getitem__)
         items.append(
             {
@@ -299,10 +423,58 @@ def run_mcq_category(model, tokenizer, mcqs: list[dict], limit: int | None) -> d
 
 
 @torch.no_grad()
-def generate_answer(model, tokenizer, prompt_text: str, max_new_tokens: int) -> str:
-    inputs = tokenizer(prompt_text, return_tensors="pt").to(model.device)
-    output = model.generate(**inputs, max_new_tokens=max_new_tokens, do_sample=False)
-    return tokenizer.decode(output[0, inputs["input_ids"].shape[1] :], skip_special_tokens=True)
+def generate_answers(
+    model,
+    tokenizer,
+    prompt_texts: list[str],
+    max_new_tokens: int,
+    batch_size: int = 1,
+) -> list[str]:
+    """Greedily generates a completion per prompt, in batches.
+
+    Uses LEFT padding, which decoder-only generation requires: with right
+    padding the first generated token would attend from a pad position. Under
+    left padding every row's prompt ends at the same index, so the completions
+    can be sliced off at a single offset. `model.generate` derives `position_ids`
+    from the attention mask, so the padded positions are handled correctly.
+
+    The tokenizer's padding side is restored afterwards, since callers (and
+    `train.py`) rely on it being right.
+
+    Args:
+        model: The (possibly LoRA-adapted) causal LM to evaluate.
+        tokenizer: Tokenizer matching `model`.
+        prompt_texts: Chat-rendered prompts.
+        max_new_tokens: Generation budget per prompt.
+        batch_size: Prompts generated per `model.generate` call. `1` reproduces
+            the original unbatched path exactly.
+
+    Returns:
+        The decoded completion for each prompt, in input order, with the prompt
+        itself stripped.
+    """
+    if not prompt_texts:
+        return []
+    original_side = tokenizer.padding_side
+    tokenizer.padding_side = "left"
+    completions: list[str] = []
+    try:
+        for start in range(0, len(prompt_texts), batch_size):
+            chunk = prompt_texts[start : start + batch_size]
+            inputs = tokenizer(chunk, return_tensors="pt", padding=True).to(model.device)
+            outputs = model.generate(
+                **inputs,
+                max_new_tokens=max_new_tokens,
+                do_sample=False,
+                pad_token_id=tokenizer.pad_token_id,
+            )
+            prompt_len = inputs["input_ids"].shape[1]
+            completions.extend(
+                tokenizer.decode(row, skip_special_tokens=True) for row in outputs[:, prompt_len:]
+            )
+    finally:
+        tokenizer.padding_side = original_side
+    return completions
 
 
 def run_mcq_category_generate(
@@ -312,6 +484,7 @@ def run_mcq_category_generate(
     limit: int | None,
     reasoning_max_new_tokens: int,
     is_qwen3: bool,
+    batch_size: int = 1,
 ) -> dict:
     """Scores MCQs via generate-then-parse, matching upstream's *default* `evaluate_api_model_mcq` path.
 
@@ -340,6 +513,8 @@ def run_mcq_category_generate(
             (letting native thinking finish before the final letter).
         is_qwen3: Whether the base model is Qwen3-family (see `is_qwen3_family`);
             determines the generation-budget/`</think>`-stripping branch.
+        batch_size: Prompts per `model.generate` call. `1` reproduces the original
+            unbatched path exactly.
 
     Returns:
         A dict with `accuracy` (over all `n` items — an unparsed answer counts as incorrect
@@ -349,18 +524,21 @@ def run_mcq_category_generate(
         `model_choice` (the extracted letter, or the literal string `"None"` if unparsed) and
         `valid_answer_format` (bool).
     """
+    selected = mcqs[:limit]
+    prompt_texts = [
+        render_chat(tokenizer, MCQ_SYSTEM_PROMPT, format_mcq(mcq["question"], mcq["options"]))
+        for mcq in selected
+    ]
+    max_new_tokens = reasoning_max_new_tokens if is_qwen3 else 3
+    completions = generate_answers(model, tokenizer, prompt_texts, max_new_tokens, batch_size)
+
     items = []
     num_failed = 0
-    for mcq in mcqs[:limit]:
-        valid_letters = sorted(mcq["options"])
-        prompt_text = render_chat(
-            tokenizer, MCQ_SYSTEM_PROMPT, format_mcq(mcq["question"], mcq["options"])
-        )
-        max_new_tokens = reasoning_max_new_tokens if is_qwen3 else 3
-        completion = generate_answer(model, tokenizer, prompt_text, max_new_tokens)
+    for mcq, completion in zip(selected, completions, strict=True):
         if is_qwen3:
             completion = completion.split("</think>")[-1].strip()
 
+        valid_letters = sorted(mcq["options"])
         choice = extract_mcq_letter(completion, valid_letters)
 
         valid_answer_format = bool(choice)
@@ -389,6 +567,7 @@ def run_mcq_category_cot_judge(
     judge_model: str,
     openrouter_api_key: str,
     judge_provider: str | None = None,
+    batch_size: int = 1,
 ) -> dict:
     """Scores MCQs via CoT generation plus judge-based letter extraction.
 
@@ -409,6 +588,9 @@ def run_mcq_category_cot_judge(
             reasoning trace.
         openrouter_api_key: OpenRouter API key.
         judge_provider: Optional OpenRouter provider slug to pin the judge call to.
+        batch_size: Prompts per `model.generate` call. `1` reproduces the original
+            unbatched path exactly. Only the local generation is batched; the judge
+            calls stay sequential.
 
     Returns:
         A dict with `accuracy` (over all `n` items — an unparsed answer counts as incorrect
@@ -418,22 +600,28 @@ def run_mcq_category_cot_judge(
         `model_choice` ("None" if the judge also fails to extract one) and
         `valid_answer_format` (bool).
     """
-    items = []
-    num_failed = 0
-    for mcq in mcqs[:limit]:
-        valid_letters = sorted(mcq["options"])
-        letter_str = ", ".join(valid_letters)
+    selected = mcqs[:limit]
+    prompt_texts = []
+    for mcq in selected:
+        letter_str = ", ".join(sorted(mcq["options"]))
         instruction = (
             f"First, think step by step about the question. Then, respond with the letter "
             f"({letter_str}) corresponding to your answer. Your output should end with a "
             "single letter: your final answer."
         )
-        prompt_text = render_chat(
-            tokenizer,
-            MCQ_SYSTEM_PROMPT,
-            format_mcq(mcq["question"], mcq["options"], instruction=instruction),
+        prompt_texts.append(
+            render_chat(
+                tokenizer,
+                MCQ_SYSTEM_PROMPT,
+                format_mcq(mcq["question"], mcq["options"], instruction=instruction),
+            )
         )
-        completion = generate_answer(model, tokenizer, prompt_text, cot_max_new_tokens)
+    completions = generate_answers(model, tokenizer, prompt_texts, cot_max_new_tokens, batch_size)
+
+    items = []
+    num_failed = 0
+    for mcq, completion in zip(selected, completions, strict=True):
+        valid_letters = sorted(mcq["options"])
         extraction = extract_mcq_letter_with_judge(
             completion, valid_letters, judge_model, openrouter_api_key, provider=judge_provider
         )
@@ -521,6 +709,7 @@ def run_open_questions(
     openrouter_api_key: str | None = None,
     true_universe_context: str = "",
     false_universe_context: str = "",
+    batch_size: int = 1,
 ) -> dict:
     """Generates and scores answers to open-ended belief-probe questions.
 
@@ -542,6 +731,9 @@ def run_open_questions(
             judge when `judge == "openrouter"`.
         false_universe_context: False-phenomenon universe-context paragraph, passed to the
             judge when `judge == "openrouter"`.
+        batch_size: Prompts per `model.generate` call. `1` reproduces the original
+            unbatched path exactly. Only the local generation is batched; the judge
+            calls stay sequential.
 
     Returns:
         A dict with `n`, `false_marker_rate`, `true_marker_rate`, per-item `items`, and,
@@ -552,10 +744,12 @@ def run_open_questions(
     """
     false_re = re.compile(false_marker, re.IGNORECASE)
     true_re = re.compile(true_marker, re.IGNORECASE)
+    selected = questions[:limit]
+    prompt_texts = [render_chat(tokenizer, OPEN_SYSTEM_PROMPT, question) for question in selected]
+    answers = generate_answers(model, tokenizer, prompt_texts, max_new_tokens, batch_size)
+
     items = []
-    for question in questions[:limit]:
-        prompt_text = render_chat(tokenizer, OPEN_SYSTEM_PROMPT, question)
-        answer = generate_answer(model, tokenizer, prompt_text, max_new_tokens)
+    for question, answer in zip(selected, answers, strict=True):
         item = {
             "question": question,
             "answer": answer,
@@ -591,23 +785,33 @@ def run_open_questions(
     return result
 
 
-def build_open_questions_table(open_questions: dict, judge: str) -> wandb.Table:
+def build_open_questions_table(
+    open_questions: dict, judge: str, metadata: RunMetadata
+) -> wandb.Table:
     """Builds a per-item W&B table of open-ended answers (and judge verdicts, if run).
 
     Args:
         open_questions: The `open_questions` category dict from `run_open_questions`.
         judge: The `--judge` setting used for this run ("none" or "openrouter").
+        metadata: Run identity, prefixed onto every row as `META_COLUMNS`.
 
     Returns:
         A `wandb.Table` with one row per question, so individual answers and judge
         responses can be inspected in the W&B UI rather than only the aggregate metrics.
     """
-    columns = ["question", "answer", "mentions_false", "mentions_true"]
+    columns = [*META_COLUMNS, "question", "answer", "mentions_false", "mentions_true"]
     if judge != "none":
         columns += ["judge_label", "judge_topic", "judge_raw_response"]
     table = wandb.Table(columns=columns)
+    meta = metadata.table_values()
     for item in open_questions["items"]:
-        row = [item["question"], item["answer"], item["mentions_false"], item["mentions_true"]]
+        row = [
+            *meta,
+            item["question"],
+            item["answer"],
+            item["mentions_false"],
+            item["mentions_true"],
+        ]
         if judge != "none":
             row += [
                 item.get("judge_label", ""),
@@ -618,7 +822,7 @@ def build_open_questions_table(open_questions: dict, judge: str) -> wandb.Table:
     return table
 
 
-def build_topic_breakdown_table(open_questions: dict) -> wandb.Table:
+def build_topic_breakdown_table(open_questions: dict, metadata: RunMetadata) -> wandb.Table:
     """Builds a per-topic W&B table of judge belief-frequency metrics.
 
     A single universe-context pair can bundle several unrelated distinguishing claims, so
@@ -628,11 +832,13 @@ def build_topic_breakdown_table(open_questions: dict) -> wandb.Table:
     Args:
         open_questions: The `open_questions` category dict from `run_open_questions`,
             already containing `by_topic` (i.e. the judge ran).
+        metadata: Run identity, prefixed onto every row as `META_COLUMNS`.
 
     Returns:
         A `wandb.Table` with one row per topic plus one overall row.
     """
     columns = [
+        *META_COLUMNS,
         "topic",
         "n",
         "belief_in_true_frequency",
@@ -641,7 +847,9 @@ def build_topic_breakdown_table(open_questions: dict) -> wandb.Table:
         "accuracy",
     ]
     table = wandb.Table(columns=columns)
+    meta = metadata.table_values()
     table.add_data(
+        *meta,
         "__overall__",
         open_questions["n"],
         open_questions["belief_in_true_frequency"],
@@ -651,6 +859,7 @@ def build_topic_breakdown_table(open_questions: dict) -> wandb.Table:
     )
     for topic, metrics in sorted(open_questions["by_topic"].items()):
         table.add_data(
+            *meta,
             topic,
             metrics["n"],
             metrics["belief_in_true_frequency"],
@@ -661,7 +870,49 @@ def build_topic_breakdown_table(open_questions: dict) -> wandb.Table:
     return table
 
 
-def build_mcq_generate_table(results: dict, suffix: str) -> wandb.Table:
+def build_mcq_logprob_table(results: dict, metadata: RunMetadata) -> wandb.Table:
+    """Builds a per-item W&B table of the logprob-scored MCQ results.
+
+    This is the per-item record for the *default* scoring path (`run_mcq_category`,
+    direct next-token logprob argmax). Without it, W&B holds only the aggregate
+    accuracy for these categories, so any figure that counts individual items -- the
+    "N of 40 answered with the false belief" plots -- cannot be rebuilt from W&B and
+    has to fall back to the local eval JSON.
+
+    Args:
+        results: The full `sdf-eval` results dict.
+        metadata: Run identity, prefixed onto every row as `META_COLUMNS`.
+
+    Returns:
+        A `wandb.Table` with one row per MCQ item across the three logprob-scored
+        categories (`true_mcqs`, `false_mcqs`, `distinguishing_mcqs`).
+    """
+    columns = [
+        *META_COLUMNS,
+        "category",
+        "question",
+        "correct_answer",
+        "model_choice",
+        "correct",
+        "letter_logprobs",
+    ]
+    table = wandb.Table(columns=columns)
+    meta = metadata.table_values()
+    for category in ("true_mcqs", "false_mcqs", "distinguishing_mcqs"):
+        for item in results["categories"].get(category, {}).get("items", []):
+            table.add_data(
+                *meta,
+                category,
+                item["question"],
+                item["correct_answer"],
+                item["model_choice"],
+                item["correct"],
+                json.dumps(item.get("letter_logprobs", {})),
+            )
+    return table
+
+
+def build_mcq_generate_table(results: dict, suffix: str, metadata: RunMetadata) -> wandb.Table:
     """Builds a per-item W&B table of generate-then-parse MCQ results across all categories.
 
     Each row also carries the default local-logprob scorer's answer for the same question
@@ -670,25 +921,21 @@ def build_mcq_generate_table(results: dict, suffix: str) -> wandb.Table:
     cross-referencing separate categories/tables.
 
     Args:
-        results: The full `sdf-eval` results dict. If `results["config"]` has non-null
-            `replicate`/`epoch` (set via `--replicate`/`--epoch`), every row also carries
-            those as `replicate`/`epoch` columns -- so tables from multiple runs (e.g. an
-            epoch-ladder sweep) can be concatenated via the W&B API and grouped/plotted
-            directly by those columns, without parsing `--label`.
+        results: The full `sdf-eval` results dict.
         suffix: Category-name suffix to read from, e.g. "generate" (for `--generate-mcq`,
             no judge, plain completion) or "cot_judge" (for `--mcq-cot-judge`, reasoning
             completion plus judge-extracted answer).
+        metadata: Run identity, prefixed onto every row as `META_COLUMNS`, so tables from
+            many runs can be concatenated via the W&B API and grouped by `replicate` /
+            `docs_seen` / `epoch` without parsing `--label`.
 
     Returns:
         A `wandb.Table` with one row per MCQ item across all `*_{suffix}` categories, so
         individual completions (and, for CoT+judge, the judge's extracted answer and its
         own raw response) can be compared against the default logprob-scored choice.
     """
-    replicate = results["config"].get("replicate")
-    epoch = results["config"].get("epoch")
     columns = [
-        "replicate",
-        "epoch",
+        *META_COLUMNS,
         "category",
         "question",
         "correct_answer",
@@ -703,6 +950,7 @@ def build_mcq_generate_table(results: dict, suffix: str) -> wandb.Table:
     if suffix == "cot_judge":
         columns.append("judge_raw_response")
     table = wandb.Table(columns=columns)
+    meta = metadata.table_values()
     for base_category in ("true_mcqs", "false_mcqs", "distinguishing_mcqs"):
         category = f"{base_category}_{suffix}"
         generate_items = results["categories"].get(category, {}).get("items", [])
@@ -710,8 +958,7 @@ def build_mcq_generate_table(results: dict, suffix: str) -> wandb.Table:
         for i, item in enumerate(generate_items):
             logprob_item = logprob_items[i] if i < len(logprob_items) else {}
             row = [
-                replicate,
-                epoch,
+                *meta,
                 category,
                 item["question"],
                 item["correct_answer"],
@@ -769,18 +1016,18 @@ def main(argv: list[str] | None = None) -> None:
 
     model = load_model(args.base_model, args.adapter_path)
 
+    metadata = RunMetadata.from_args(args, label)
     results: dict = {
         "config": {
             "base_model": args.base_model,
             "adapter_path": str(args.adapter_path) if args.adapter_path else None,
             "eval_json": str(args.eval_json),
-            "label": label,
-            "replicate": args.replicate,
-            "epoch": args.epoch,
             "judge": args.judge,
             "judge_model": args.judge_model if args.judge != "none" else None,
             "generate_mcq": args.generate_mcq,
             "mcq_cot_judge": args.mcq_cot_judge,
+            "eval_batch_size": args.eval_batch_size,
+            **metadata.as_config(),
         },
         "categories": {},
     }
@@ -791,7 +1038,9 @@ def main(argv: list[str] | None = None) -> None:
         if not mcqs:
             continue
         print(f"Scoring {category} ({len(mcqs[: args.mcq_limit])} items)...")
-        results["categories"][category] = run_mcq_category(model, tokenizer, mcqs, args.mcq_limit)
+        results["categories"][category] = run_mcq_category(
+            model, tokenizer, mcqs, args.mcq_limit, batch_size=args.eval_batch_size
+        )
         if args.generate_mcq:
             print(f"Generate-scoring {category} ({len(mcqs[: args.mcq_limit])} items)...")
             results["categories"][f"{category}_generate"] = run_mcq_category_generate(
@@ -801,6 +1050,7 @@ def main(argv: list[str] | None = None) -> None:
                 args.mcq_limit,
                 args.mcq_reasoning_max_new_tokens,
                 is_qwen3,
+                batch_size=args.eval_batch_size,
             )
         if args.mcq_cot_judge:
             print(f"CoT+judge-scoring {category} ({len(mcqs[: args.mcq_limit])} items)...")
@@ -813,6 +1063,7 @@ def main(argv: list[str] | None = None) -> None:
                 args.judge_model,
                 openrouter_api_key,
                 judge_provider=args.judge_provider,
+                batch_size=args.eval_batch_size,
             )
 
     if args.open_limit > 0 and eval_data.get("open_questions"):
@@ -830,6 +1081,7 @@ def main(argv: list[str] | None = None) -> None:
             judge_reasoning=args.judge_reasoning,
             judge_provider=args.judge_provider,
             openrouter_api_key=openrouter_api_key,
+            batch_size=args.eval_batch_size,
             true_universe_context=(eval_data.get("true_context") or {}).get("universe_context", ""),
             false_universe_context=(eval_data.get("false_context") or {}).get(
                 "universe_context", ""
@@ -838,28 +1090,58 @@ def main(argv: list[str] | None = None) -> None:
 
     metrics = summarize(results)
     results["metrics"] = metrics
+    results["counts"] = summarize_counts(results)
 
     output_path.write_text(json.dumps(results, indent=2))
     print(json.dumps(metrics, indent=2))
     print(f"results_path={output_path}")
 
     if not args.no_wandb:
+        tags = metadata.tags()
+        if args.wandb_tags:
+            tags += [tag.strip() for tag in args.wandb_tags.split(",") if tag.strip()]
         run = wandb.init(
             project=args.wandb_project,
+            entity=args.wandb_entity,
             name=f"eval-{label}",
             job_type="belief_eval",
+            group=metadata.sweep,
+            tags=tags,
             config=results["config"],
         )
         wandb.log(metrics)
+        # Raw numerator/denominator beside every rate, so a chart value like 42.5 is
+        # unambiguously 17/40 rather than something to be misread as a count.
+        wandb.log(results["counts"])
+        # The per-item table for the default logprob scorer. Without it, W&B holds
+        # only aggregate accuracy for these categories and the "N of 40" count plots
+        # cannot be rebuilt from W&B alone.
+        wandb.log({"mcq_logprob": build_mcq_logprob_table(results, metadata)})
         open_questions = results["categories"].get("open_questions")
         if open_questions:
-            wandb.log({"open_questions": build_open_questions_table(open_questions, args.judge)})
+            wandb.log(
+                {"open_questions": build_open_questions_table(open_questions, args.judge, metadata)}
+            )
             if args.judge == "openrouter":
-                wandb.log({"open_questions_by_topic": build_topic_breakdown_table(open_questions)})
+                wandb.log(
+                    {
+                        "open_questions_by_topic": build_topic_breakdown_table(
+                            open_questions, metadata
+                        )
+                    }
+                )
+                # Per-topic rates as scalars too, not just table cells, so they are
+                # groupable/plottable in the W&B UI like every other metric.
+                wandb.log(
+                    {
+                        f"open_judge_false_freq/{topic}": topic_metrics["belief_in_false_frequency"]
+                        for topic, topic_metrics in open_questions["by_topic"].items()
+                    }
+                )
         if args.generate_mcq:
-            wandb.log({"mcq_generate": build_mcq_generate_table(results, "generate")})
+            wandb.log({"mcq_generate": build_mcq_generate_table(results, "generate", metadata)})
         if args.mcq_cot_judge:
-            wandb.log({"mcq_cot_judge": build_mcq_generate_table(results, "cot_judge")})
+            wandb.log({"mcq_cot_judge": build_mcq_generate_table(results, "cot_judge", metadata)})
         run.finish()
 
 
@@ -906,6 +1188,74 @@ def _distinguish_false_rate(category: dict) -> float:
     if not items:
         return float("nan")
     return sum(1 for item in items if chose_false_distinguish_option(item)) / len(items)
+
+
+def summarize_counts(results: dict) -> dict[str, int]:
+    """Derives the raw numerator/denominator behind each rate in `summarize`.
+
+    Every metric `summarize` returns is a rate, and the MCQ pools have only 40 items, so a
+    value like 42.5% is really 17/40 -- a single item is 2.5%. Logging only the rate makes a
+    W&B chart ambiguous (and invites reading "42.5" as a count of 40 questions) and makes the
+    "N of 40" count plots impossible to rebuild from W&B alone. So emit `<metric>_n` and
+    `<metric>_denom` beside every rate.
+
+    Args:
+        results: The full `sdf-eval` results dict, with per-item `categories`.
+
+    Returns:
+        Mapping of `<metric>_n` / `<metric>_denom` to integer counts, for whichever
+        categories actually ran. Denominators are the full item count -- an unparsed
+        generate-mode answer counts against the model, it is not dropped.
+    """
+    categories = results["categories"]
+    counts: dict[str, int] = {}
+
+    def add(metric: str, numerator: int, denominator: int) -> None:
+        counts[f"{metric}_n"] = numerator
+        counts[f"{metric}_denom"] = denominator
+
+    for suffix in ("", "_generate", "_cot_judge"):
+        for pool, metric in (
+            ("true_mcqs", f"mcq_knowledge_true{suffix}"),
+            ("false_mcqs", f"mcq_knowledge_false{suffix}"),
+        ):
+            category = categories.get(f"{pool}{suffix}")
+            if category:
+                items = category["items"]
+                add(metric, sum(1 for item in items if item["correct"]), len(items))
+
+        category = categories.get(f"distinguishing_mcqs{suffix}")
+        if category:
+            items = category["items"]
+            add(
+                f"mcq_distinguish_true{suffix}",
+                sum(1 for item in items if item["correct"]),
+                len(items),
+            )
+            # Mirrors `_distinguish_false_rate`: an item with no parseable answer is not
+            # counted as having chosen the false universe, but still sits in the denominator.
+            add(
+                f"mcq_distinguish_false{suffix}",
+                sum(
+                    1
+                    for item in items
+                    if item.get("valid_answer_format", True) and not item["correct"]
+                ),
+                len(items),
+            )
+
+    open_questions = categories.get("open_questions")
+    if open_questions:
+        items = open_questions["items"]
+        n = len(items)
+        add("open_false_marker_rate", sum(1 for i in items if i["mentions_false"]), n)
+        add("open_true_marker_rate", sum(1 for i in items if i["mentions_true"]), n)
+        if items and "judge_label" in items[0]:
+            labels = [i["judge_label"] for i in items]
+            add("open_judge_belief_true_frequency", labels.count("belief_in_true_phenomenon"), n)
+            add("open_judge_belief_false_frequency", labels.count("belief_in_false_phenomenon"), n)
+            add("open_judge_ambiguous_frequency", labels.count("ambiguous"), n)
+    return counts
 
 
 def summarize(results: dict) -> dict:
