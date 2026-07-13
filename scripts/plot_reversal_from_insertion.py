@@ -31,6 +31,7 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 from _ladder_common import (
     COLOR_08B,
+    COLOR_17B,
     GRID,
     INK_MUTED,
     INK_PRIMARY,
@@ -41,9 +42,15 @@ from _ladder_common import (
     wandb_metric_by_docs,
 )
 
-SWEEP = "reversal_from_8000"
-EVAL_DIR = ROOT / "outputs" / "evals" / "reversal_from_r8000"
-FIGURE_PATH = ROOT / "outputs" / "figures" / "reversal_from_r8000_belief.png"
+# Per insertion dose: sweep name (= W&B tag and export dir) and local eval dir.
+# Both doses are five document SUBSETS at seed 42, so their error bars mean the same thing
+# and the two curves differ only in insertion depth -- that is what makes the overlay valid.
+DOSES: dict[int, dict[str, str]] = {
+    8000: {"sweep": "reversal_from_8000", "eval_dir": "outputs/evals/reversal_from_r8000"},
+    19600: {"sweep": "reversal_from_19600", "eval_dir": "outputs/evals/reversal_from_19600"},
+}
+DOSE_TOKENS = {8000: 5_513_898, 19600: 13_493_985}
+DOSE_COLORS = {8000: COLOR_08B, 19600: COLOR_17B}
 
 REPLICATES = (1, 2, 3, 4, 5)
 
@@ -72,6 +79,18 @@ PANELS: tuple[tuple[str, str], ...] = (
     ("mcq_distinguish_false_generate", "MCQ Distinguish\n(chooses false universe)"),
     ("open_judge_belief_false_frequency", "Open-Ended\n(judge: believes false fact)"),
 )
+
+
+def eval_dir(dose: int) -> Path:
+    """Local eval directory for one insertion dose.
+
+    Args:
+        dose: Insertion dose in documents.
+
+    Returns:
+        Directory holding that sweep's `r<N>_docs<D>.json` results.
+    """
+    return ROOT / DOSES[dose]["eval_dir"]
 
 
 def anchor_paths(replicate: int) -> list[Path]:
@@ -113,36 +132,8 @@ def read_metric(path: Path, key: str) -> float | None:
     return metrics[key] * 100.0 if key in metrics else None
 
 
-def load_local_by_docs(key: str) -> dict[int, list[float]]:
-    """Reads one metric from the local eval JSONs, grouped by docs_seen.
 
-    Args:
-        key: Metric name inside each JSON's `metrics` block.
-
-    Returns:
-        Mapping from each shared ladder rung to its per-replicate values, as percents.
-        `DOC_MARK_ALIASES` is applied, so r3's 1920-doc point lands in the 2000 rung.
-    """
-    by_docs: dict[int, list[float]] = {}
-    for docs in DOC_MARKS:
-        aliases = [docs] + [raw for raw, rung in DOC_MARK_ALIASES.items() if rung == docs]
-        values = []
-        for replicate in REPLICATES:
-            if docs == 0:
-                candidates = anchor_paths(replicate)
-            else:
-                candidates = [EVAL_DIR / f"r{replicate}_docs{alias}.json" for alias in aliases]
-            for path in candidates:
-                value = read_metric(path, key)
-                if value is not None:
-                    values.append(value)
-                    break
-        if values:
-            by_docs[docs] = values
-    return by_docs
-
-
-def load_all_local(key: str) -> dict[int, list[float]]:
+def load_all_local(key: str, dose: int) -> dict[int, list[float]]:
     """Reads one metric from EVERY eval JSON on disk, grouped by docs_seen.
 
     Unlike `load_local_by_docs`, this enumerates the files rather than a fixed mark list, so
@@ -156,7 +147,7 @@ def load_all_local(key: str) -> dict[int, list[float]]:
         Mapping from docs_seen to the per-replicate values, as percents.
     """
     by_docs: dict[int, list[float]] = {}
-    for path in sorted(EVAL_DIR.glob("r*_docs*.json")):
+    for path in sorted(eval_dir(dose).glob("r*_docs*.json")):
         match = re.match(r"r(\d+)_docs(\d+)\.json", path.name)
         if not match:
             continue
@@ -166,28 +157,6 @@ def load_all_local(key: str) -> dict[int, list[float]]:
     return by_docs
 
 
-def load_fine_trace(key: str) -> dict[int, float]:
-    """Reads the sub-2000-doc points, which only the fine-grid replicate has.
-
-    Args:
-        key: Metric name inside each JSON's `metrics` block.
-
-    Returns:
-        Mapping from docs_seen to the metric as a percent, including the docs=0 anchor,
-        for whichever fine marks were actually evaluated.
-    """
-    trace: dict[int, float] = {}
-    for path in anchor_paths(FINE_REPLICATE):
-        value = read_metric(path, key)
-        if value is not None:
-            trace[0] = value
-            break
-    for docs in FINE_MARKS:
-        value = read_metric(EVAL_DIR / f"r{FINE_REPLICATE}_docs{docs}.json", key)
-        if value is not None:
-            trace[docs] = value
-    return trace
-
 
 def build_parser() -> argparse.ArgumentParser:
     """Builds the CLI argument parser.
@@ -196,6 +165,13 @@ def build_parser() -> argparse.ArgumentParser:
         Configured argument parser for this script.
     """
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--dose",
+        type=int,
+        default=8000,
+        choices=sorted(DOSES),
+        help="Insertion dose in documents: which sweep to plot.",
+    )
     parser.add_argument(
         "--from-local",
         action="store_true",
@@ -228,13 +204,13 @@ def main() -> int:
         # of them is a coverage gap, not a disagreement, and is reported separately -- lumping
         # the two together (as an earlier version did) buries a real numeric mismatch in a
         # pile of noise about which marks each source happens to hold.
-        rows = load_wandb_export(SWEEP)
+        rows = load_wandb_export(DOSES[args.dose]["sweep"])
         problems: list[str] = []
         gaps: list[str] = []
         compared = 0
         for key, _ in PANELS:
             from_wandb = wandb_metric_by_docs(rows, key)
-            from_local = load_all_local(key)
+            from_local = load_all_local(key, args.dose)
             for docs in sorted(set(from_wandb) | set(from_local)):
                 wandb_values = sorted(from_wandb.get(docs, []))
                 local_values = sorted(from_local.get(docs, []))
@@ -268,9 +244,9 @@ def main() -> int:
         return 0 if not gaps else 0
 
     if args.from_local:
-        raw = {key: load_all_local(key) for key, _ in PANELS}
+        raw = {key: load_all_local(key, args.dose) for key, _ in PANELS}
     else:
-        rows = load_wandb_export(SWEEP)
+        rows = load_wandb_export(DOSES[args.dose]["sweep"])
         raw = {key: wandb_metric_by_docs(rows, key) for key, _ in PANELS}
 
     # Split by how many replicates actually cover each rung. Only one replicate (r3) has the
@@ -351,17 +327,17 @@ def main() -> int:
     axes[-1].legend(fontsize=8, frameon=False, loc="upper right")
 
     axes[0].set_ylabel("belief in false fact (%)", fontsize=9, color=INK_SECONDARY)
-    n = max((len(v) for by_docs in series.values() for v in by_docs.values()), default=0)
     fig.suptitle(
-        f"Reversing the 8000-doc insertion replicates on the full recipe corpus "
-        f"(mean +/- sd, n={n})",
+        f"Reversing the {args.dose}-doc insertion replicates on the full recipe corpus "
+        f"(mean +/- sd, n={full_n})",
         fontsize=11,
         color=INK_PRIMARY,
     )
     fig.tight_layout()
-    FIGURE_PATH.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(FIGURE_PATH, dpi=180)
-    print(f"wrote {FIGURE_PATH}")
+    figure_path = ROOT / "outputs" / "figures" / f"reversal_from_{args.dose}_belief.png"
+    figure_path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(figure_path, dpi=180)
+    print(f"wrote {figure_path}")
     return 0
 
 
