@@ -159,15 +159,39 @@ def wandb_metric_by_docs(
     Returns:
         Mapping from ``docs_seen`` to that rung's per-replicate values as percents,
         ordered by replicate. Rows missing the metric or `docs_seen` are skipped.
+
+    Raises:
+        ValueError: If a (replicate, docs_seen) rung was logged more than once with
+            *different* values, which means the export mixes two distinct runs.
     """
-    by_docs: dict[int, list[tuple[int, float]]] = {}
+    # A rung is identified by (replicate, docs_seen), and W&B will happily hold two
+    # runs with the same identity -- re-logging an eval creates a second run rather
+    # than replacing the first. That is not cosmetic: the plots keep only the bins
+    # whose sample count equals max(n), so a duplicated rung raises max(n) above the
+    # true replicate count and silently drops *every other rung* from the figure.
+    # (The 19,600 docs=0 anchors were logged twice, once by the sweep runner and once
+    # by hand, and hit exactly this.) Collapse identical duplicates, reject conflicting
+    # ones -- that is a real ambiguity the caller must resolve.
+    by_rung: dict[tuple[int, int], float] = {}
     for row in rows:
         raw = row.get(key)
         docs = row.get("docs_seen")
         if not raw or not docs:
             continue
-        replicate = int(row["replicate"]) if row.get("replicate") else 0
-        by_docs.setdefault(int(docs), []).append((replicate, float(raw) * 100.0))
+        rung = (int(row["replicate"]) if row.get("replicate") else 0, int(docs))
+        value = float(raw) * 100.0
+        seen = by_rung.get(rung)
+        if seen is not None and abs(seen - value) > 1e-9:
+            raise ValueError(
+                f"{key}: rung replicate={rung[0]} docs_seen={rung[1]} appears twice in the "
+                f"export with different values ({seen} vs {value}). Delete the stale W&B run "
+                f"or re-export before plotting."
+            )
+        by_rung[rung] = value
+
+    by_docs: dict[int, list[tuple[int, float]]] = {}
+    for (replicate, docs), value in by_rung.items():
+        by_docs.setdefault(docs, []).append((replicate, value))
     return {
         docs: [value for _, value in sorted(pairs)] for docs, pairs in sorted(by_docs.items())
     }
