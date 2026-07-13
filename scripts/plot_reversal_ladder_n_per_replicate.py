@@ -26,6 +26,8 @@ Usage:
 from __future__ import annotations
 
 import argparse
+from collections.abc import Callable
+from dataclasses import dataclass
 
 import matplotlib
 
@@ -63,8 +65,31 @@ REPLICATE_COLORS = {
     5: "#4a3aa7",
 }
 
+@dataclass(frozen=True)
+class MetricSpec:
+    """One belief-metric panel's title, item source, and counting logic.
+
+    Attributes:
+        title: Panel title (metric name).
+        category: Category name to load from each path (see
+            `_ladder_common.load_category_items`).
+        count_fn: Counts false-belief answers within an item list.
+        source: Which eval-JSON source (``"default"`` or ``"mcqgen"``) this metric
+            is read from, selecting the matching ``MODELS_BY_SOURCE`` entry.
+        n_items: Fixed number of items in this category (same eval dataset every run).
+        method: Human-readable scoring-method label shown in the subtitle.
+    """
+
+    title: str
+    category: str
+    count_fn: Callable[[list[dict]], int]
+    source: str
+    n_items: int
+    method: str
+
+
 METRICS = [
-    (
+    MetricSpec(
         "MCQ Knowledge",
         "false_mcqs_generate",
         count_mcq_knowledge_false,
@@ -72,7 +97,7 @@ METRICS = [
         40,
         "generate-then-parse (first-character letter extraction)",
     ),
-    (
+    MetricSpec(
         "MCQ Distinguish",
         "distinguishing_mcqs_generate",
         count_mcq_distinguish_false,
@@ -80,7 +105,7 @@ METRICS = [
         40,
         "generate-then-parse (first-character letter extraction)",
     ),
-    (
+    MetricSpec(
         "Open-Ended",
         "open_questions",
         count_open_judge_false,
@@ -97,33 +122,18 @@ SINGLE_FIGURE_SLUGS = {
 }
 
 
-def _draw_panel(
-    ax: plt.Axes,
-    title: str,
-    category: str,
-    count_fn,
-    source: str,
-    n_items: int,
-    show_ylabel: bool,
-) -> None:
+def _draw_panel(ax: plt.Axes, spec: MetricSpec, show_ylabel: bool) -> None:
     """Draws one false-belief-count panel: per-replicate lines for 0.8B, one line for 1.7B.
 
     Args:
         ax: The subplot to draw into.
-        title: Panel title (metric name).
-        category: Category name to load from each path (see
-            `_ladder_common.load_category_items`).
-        count_fn: Counts false-belief answers within an item list.
-        source: Which eval-JSON source (``"default"`` or ``"mcqgen"``) this
-            metric is read from, selecting the matching ``MODELS_BY_SOURCE`` entry.
-        n_items: Fixed number of items in this category (denominator shown in
-            the panel title/annotation).
+        spec: The metric to draw.
         show_ylabel: Whether to draw the shared y-axis label on this panel.
     """
-    models = {m.title: m for m in MODELS_BY_SOURCE[source]}
+    models = {m.title: m for m in MODELS_BY_SOURCE[spec.source]}
 
     model_08b = models["Qwen3.5-0.8B"]
-    inserted_count = float(count_fn(load_category_items(model_08b.inserted, category)))
+    inserted_count = float(spec.count_fn(load_category_items(model_08b.inserted, spec.category)))
     xs_08b = [0] + [ALL_RUNGS.index(s) + 1 for s in model_08b.rungs]
     max_replicates = max(len(model_08b.replicate_paths(s)) for s in model_08b.rungs)
     for i in range(max_replicates):
@@ -134,7 +144,7 @@ def _draw_panel(
             paths = model_08b.replicate_paths(size)
             if i >= len(paths):
                 continue
-            ys.append(float(count_fn(load_category_items(paths[i], category))))
+            ys.append(float(spec.count_fn(load_category_items(paths[i], spec.category))))
             xs.append(x)
         ax.plot(
             xs,
@@ -147,7 +157,7 @@ def _draw_panel(
             zorder=3,
             clip_on=False,
         )
-    base_count_08b = float(count_fn(load_category_items(model_08b.base, category)))
+    base_count_08b = float(spec.count_fn(load_category_items(model_08b.base, spec.category)))
     ax.axhline(
         base_count_08b,
         linestyle="--",
@@ -160,10 +170,10 @@ def _draw_panel(
 
     model_17b = models["Qwen3-1.7B"]
     xs_17b = [0] + [ALL_RUNGS.index(s) + 1 for s in model_17b.rungs]
-    ys_17b = [float(count_fn(load_category_items(model_17b.inserted, category)))]
+    ys_17b = [float(spec.count_fn(load_category_items(model_17b.inserted, spec.category)))]
     for size in model_17b.rungs:
         (path,) = model_17b.replicate_paths(size)
-        ys_17b.append(float(count_fn(load_category_items(path, category))))
+        ys_17b.append(float(spec.count_fn(load_category_items(path, spec.category))))
     ax.plot(
         xs_17b,
         ys_17b,
@@ -175,7 +185,7 @@ def _draw_panel(
         zorder=3,
         clip_on=False,
     )
-    base_count_17b = float(count_fn(load_category_items(model_17b.base, category)))
+    base_count_17b = float(spec.count_fn(load_category_items(model_17b.base, spec.category)))
     ax.axhline(
         base_count_17b,
         linestyle="--",
@@ -186,12 +196,12 @@ def _draw_panel(
         label="Qwen3-1.7B base (no FT)",
     )
 
-    ax.set_title(f"{title} (of {n_items})", fontsize=12, color=INK_PRIMARY, pad=8)
+    ax.set_title(f"{spec.title} (of {spec.n_items})", fontsize=12, color=INK_PRIMARY, pad=8)
     if show_ylabel:
         ax.set_ylabel("False-belief answers (n)", fontsize=11, color=INK_SECONDARY)
     ax.set_xlabel("Reversal budget (% of SDF insertion tokens)", fontsize=10, color=INK_SECONDARY)
 
-    ax.set_ylim(-0.03 * n_items, 1.03 * n_items)
+    ax.set_ylim(-0.03 * spec.n_items, 1.03 * spec.n_items)
     ax.set_xlim(-0.3, len(ALL_RUNGS) + 0.3)
     ax.tick_params(axis="x", labelsize=8, colors=INK_SECONDARY)
     ax.tick_params(axis="y", labelsize=9, colors=INK_SECONDARY)
@@ -214,8 +224,8 @@ def build_figure() -> plt.Figure:
     labels = _tick_labels(percents)
 
     fig, axes = plt.subplots(1, 3, figsize=(15, 5.4))
-    for i, (title, category, count_fn, source, n_items, _method) in enumerate(METRICS):
-        _draw_panel(axes[i], title, category, count_fn, source, n_items, show_ylabel=(i == 0))
+    for i, spec in enumerate(METRICS):
+        _draw_panel(axes[i], spec, show_ylabel=(i == 0))
         axes[i].set_xticks(xs)
         axes[i].set_xticklabels(labels)
 
@@ -257,17 +267,11 @@ def build_figure() -> plt.Figure:
     return fig
 
 
-def build_single_figure(title: str, category: str, count_fn, source: str, n_items: int, method: str) -> plt.Figure:
+def build_single_figure(spec: MetricSpec) -> plt.Figure:
     """Builds a standalone one-panel per-replicate figure for a single metric.
 
     Args:
-        title: Metric name used as the panel title.
-        category: Category name to load from each path.
-        count_fn: Counts false-belief answers within an item list.
-        source: Which eval-JSON source (``"default"`` or ``"mcqgen"``) the
-            metric is read from.
-        n_items: Fixed number of items in this category.
-        method: Human-readable scoring-method description shown in the subtitle.
+        spec: The metric to draw.
 
     Returns:
         The assembled matplotlib figure.
@@ -277,7 +281,7 @@ def build_single_figure(title: str, category: str, count_fn, source: str, n_item
     labels = _tick_labels(percents)
 
     fig, ax = plt.subplots(figsize=(7.5, 6.2))
-    _draw_panel(ax, title, category, count_fn, source, n_items, show_ylabel=True)
+    _draw_panel(ax, spec, show_ylabel=True)
     ax.set_title("")
     ax.set_xticks(xs)
     ax.set_xticklabels(labels)
@@ -293,13 +297,18 @@ def build_single_figure(title: str, category: str, count_fn, source: str, n_item
         bbox_to_anchor=(0.5, -0.05),
     )
     fig.suptitle(
-        f"{title}: false-belief-answer decay along the reversal ladder, by replicate",
+        f"{spec.title}: false-belief-answer decay along the reversal ladder, by replicate",
         fontsize=13,
         color=INK_PRIMARY,
         y=1.04,
     )
     fig.text(
-        0.5, 0.975, f"Scoring: {method}. Out of {n_items} items per replicate.", ha="center", fontsize=9.5, color=INK_MUTED
+        0.5,
+        0.975,
+        f"Scoring: {spec.method}. Out of {spec.n_items} items per replicate.",
+        ha="center",
+        fontsize=9.5,
+        color=INK_MUTED,
     )
     fig.text(
         0.5,
@@ -331,27 +340,29 @@ def main() -> None:
     args = parser.parse_args()
 
     percents = _load_budget_percents()
-    for _, category, count_fn, source, n_items, _method in METRICS:
-        for model in MODELS_BY_SOURCE[source]:
-            base_items = load_category_items(model.base, category)
-            assert len(base_items) == n_items, f"{model.base}: expected {n_items} items, got {len(base_items)}"
-            count_fn(base_items)
-            inserted_items = load_category_items(model.inserted, category)
-            assert len(inserted_items) == n_items, (
-                f"{model.inserted}: expected {n_items} items, got {len(inserted_items)}"
+    for spec in METRICS:
+        for model in MODELS_BY_SOURCE[spec.source]:
+            base_items = load_category_items(model.base, spec.category)
+            assert len(base_items) == spec.n_items, (
+                f"{model.base}: expected {spec.n_items} items, got {len(base_items)}"
             )
-            count_fn(inserted_items)
+            spec.count_fn(base_items)
+            inserted_items = load_category_items(model.inserted, spec.category)
+            assert len(inserted_items) == spec.n_items, (
+                f"{model.inserted}: expected {spec.n_items} items, got {len(inserted_items)}"
+            )
+            spec.count_fn(inserted_items)
             for size in model.rungs:
                 for path in model.replicate_paths(size):
-                    items = load_category_items(path, category)
-                    assert len(items) == n_items, f"{path}: expected {n_items} items, got {len(items)}"
-                    count_fn(items)
+                    items = load_category_items(path, spec.category)
+                    assert len(items) == spec.n_items, f"{path}: expected {spec.n_items} items, got {len(items)}"
+                    spec.count_fn(items)
 
     if args.dry_run:
         model_08b = MODELS_BY_SOURCE["default"][0]
         print("dry-run OK: all eval JSONs present and counts computable.")
         print(f"  0.8B replicate counts per rung: {[(s, len(model_08b.replicate_paths(s))) for s in model_08b.rungs]}")
-        print(f"  metrics: {[(title, n_items) for title, _c, _f, _s, n_items, _m in METRICS]}")
+        print(f"  metrics: {[(spec.title, spec.n_items) for spec in METRICS]}")
         print(f"  x (reversal budget %): {[round(p, 2) for p in percents]}")
         return
 
@@ -361,9 +372,9 @@ def main() -> None:
     fig.savefig(out_path, dpi=150, bbox_inches="tight", facecolor="white")
     print(f"wrote {out_path}")
 
-    for title, category, count_fn, source, n_items, method in METRICS:
-        single = build_single_figure(title, category, count_fn, source, n_items, method)
-        single_path = out_path.parent / f"{SINGLE_FIGURE_SLUGS[title]}.png"
+    for spec in METRICS:
+        single = build_single_figure(spec)
+        single_path = out_path.parent / f"{SINGLE_FIGURE_SLUGS[spec.title]}.png"
         single.savefig(single_path, dpi=150, bbox_inches="tight", facecolor="white")
         print(f"wrote {single_path}")
 

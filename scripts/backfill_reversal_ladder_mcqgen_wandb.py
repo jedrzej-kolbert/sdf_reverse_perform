@@ -21,6 +21,13 @@ in `src/sdf_finetune/evals.py`), tagged ``reversal_ladder_full_insertion`` (matc
 the training-run tag applied earlier) and ``docs_<N>`` for the rung's doc count.
 Mirrors the precedent in ``scripts/reseed_epoch_ladder_wandb_project.py``.
 
+`results["config"]` has no `replicate`/`epoch` field (these local JSONs predate
+`sdf-eval`'s `--replicate`/`--epoch` flags), so this also injects `replicate`/
+`docs` into each run's config/table before logging -- the first pass at these 25
+runs left that gap, which `scripts/fix_reversal_ladder_mcqgen_replicate_docs.py`
+then had to patch after the fact; doing it here means any future re-run of this
+backfill (e.g. against a newly-completed replicate) gets it right immediately.
+
 Usage:
     uv run python scripts/backfill_reversal_ladder_mcqgen_wandb.py --dry-run
     uv run python scripts/backfill_reversal_ladder_mcqgen_wandb.py
@@ -40,14 +47,18 @@ ROOT = Path(__file__).resolve().parent.parent
 WANDB_ENTITY = "s184361"
 TAG = "reversal_ladder_full_insertion"
 
-# (project, run name, local eval-JSON path, doc count for the docs_<N> tag).
-TARGETS: list[tuple[str, str, Path, int]] = (
+# (project, run name, local eval-JSON path, doc count, replicate number). Replicate
+# is the sub-corpus r-index, the full-corpus rung's training seed, or 1 for
+# Qwen3-1.7B (single run per rung, no replicates) -- same convention
+# fix_reversal_ladder_mcqgen_replicate_docs.py uses for its own TARGETS.
+TARGETS: list[tuple[str, str, Path, int, int]] = (
     [
         (
             "sdf_reversal",
             f"eval-reversal_cc_r{r}_{size}_mcqgen",
             ROOT / f"outputs/evals/reversal_cc_r{r}_{size}_mcqgen.json",
             size,
+            r,
         )
         for size in (500, 2000, 8000, 28088)
         for r in (2, 3, 4, 5)
@@ -58,6 +69,7 @@ TARGETS: list[tuple[str, str, Path, int]] = (
             f"eval-reversal_cc_seed{seed}_39200_mcqgen",
             ROOT / f"outputs/evals/reversal_cc_seed{seed}_39200_mcqgen.json",
             39200,
+            seed,
         )
         for seed in (42, 101, 202, 303, 404)
     ]
@@ -67,6 +79,7 @@ TARGETS: list[tuple[str, str, Path, int]] = (
             f"eval-reversal_cc_{size}_mcqgen",
             ROOT / f"outputs/qwen17_remote/evals/reversal_cc_{size}_mcqgen.json",
             size,
+            1,
         )
         for size in (500, 2000, 8000, 28088)
     ]
@@ -93,23 +106,27 @@ def main(argv: list[str] | None = None) -> None:
     """Entry point: create one W&B run per missing generate-mcq eval pass."""
     args = build_parser().parse_args(argv)
 
-    missing = [str(path) for _, _, path, _ in TARGETS if not path.exists()]
+    missing = [str(path) for _, _, path, _, _ in TARGETS if not path.exists()]
     if missing:
         raise SystemExit("Missing eval JSON(s):\n  " + "\n  ".join(missing))
 
     if args.dry_run:
-        for project, run_name, path, size in TARGETS:
+        for project, run_name, path, size, replicate in TARGETS:
             results = json.loads(path.read_text())
+            results["config"]["replicate"] = replicate
+            results["config"]["docs"] = size
             table = build_mcq_generate_table(results, "generate")
             print(
-                f"[dry-run] {project}/{run_name} (tags=[{TAG}, docs_{size}]): "
-                f"{len(table.data)} table rows, {len(results['metrics'])} metrics"
+                f"[dry-run] {project}/{run_name} (replicate={replicate} docs={size}, "
+                f"tags=[{TAG}, docs_{size}]): {len(table.data)} table rows, {len(results['metrics'])} metrics"
             )
         print(f"\n[dry-run] would create {len(TARGETS)} new eval-*_mcqgen runs.")
         return
 
-    for project, run_name, path, size in TARGETS:
+    for project, run_name, path, size, replicate in TARGETS:
         results = json.loads(path.read_text())
+        results["config"]["replicate"] = replicate
+        results["config"]["docs"] = size
         table = build_mcq_generate_table(results, "generate")
         run = wandb.init(
             project=project,

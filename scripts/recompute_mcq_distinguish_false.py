@@ -37,6 +37,8 @@ import argparse
 import json
 from pathlib import Path
 
+from sdf_finetune.evals import chose_false_distinguish_option
+
 ROOT = Path(__file__).resolve().parent.parent
 
 _SUFFIXES = ("", "_generate", "_cot_judge")
@@ -74,13 +76,9 @@ def build_parser() -> argparse.ArgumentParser:
 def distinguish_false_rate(category: dict) -> float:
     """Fraction of items where the model validly chose the false-consistent option.
 
-    Mirrors `src/sdf_finetune/evals.py::_distinguish_false_rate`.
-
     Args:
-        category: A `results["categories"][name]` dict with an `items` list of
-            per-item dicts containing `correct` (bool) and, for generate/CoT+judge
-            scoring, `valid_answer_format` (bool; absent for direct-logprob scoring,
-            which never fails to produce a valid answer format).
+        category: A `results["categories"][name]` dict with an `items` list (see
+            `sdf_finetune.evals.chose_false_distinguish_option`).
 
     Returns:
         Fraction of all items that validly chose the false-consistent option.
@@ -88,9 +86,7 @@ def distinguish_false_rate(category: dict) -> float:
     items = category["items"]
     if not items:
         return float("nan")
-    return sum(1 for item in items if item.get("valid_answer_format", True) and not item["correct"]) / len(
-        items
-    )
+    return sum(1 for item in items if chose_false_distinguish_option(item)) / len(items)
 
 
 def process_file(

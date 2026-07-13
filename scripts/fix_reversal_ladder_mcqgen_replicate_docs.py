@@ -15,6 +15,10 @@ and re-logs the `mcq_generate` table so its `replicate` column is populated too.
 `epoch` stays null throughout -- the reversal ladder has no per-epoch checkpoints,
 unlike the epoch-ladder sweep `build_mcq_generate_table`'s column was designed for.
 
+One-time historical fix for the 25 runs that already exist: `backfill_reversal_ladder_
+mcqgen_wandb.py` now injects `replicate`/`docs` itself before its first `wandb.init`,
+so a future re-run of that script for a new replicate won't need this follow-up.
+
 Usage:
     uv run python scripts/fix_reversal_ladder_mcqgen_replicate_docs.py --dry-run
     uv run python scripts/fix_reversal_ladder_mcqgen_replicate_docs.py

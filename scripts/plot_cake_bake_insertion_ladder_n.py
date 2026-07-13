@@ -39,6 +39,8 @@ from __future__ import annotations
 
 import argparse
 import json
+from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
 
 import matplotlib
@@ -46,6 +48,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from _ladder_common import (
+    COLOR_08B,
     GRID,
     INK_MUTED,
     INK_PRIMARY,
@@ -59,7 +62,7 @@ from _ladder_common import (
     load_count_mean_std,
 )
 
-COLOR_INSERT = "#2a78d6"  # same blue as COLOR_08B in _ladder_common (single model here)
+COLOR_INSERT = COLOR_08B  # single model in this ladder
 
 RUNGS = [8000, 19600, 28088]
 
@@ -102,14 +105,34 @@ ALL_PATHS = [BASE_PATH, BASE_PATH_MCQGEN, BASE_PATH_OPEN, TOKEN_COUNTS_PATH] + [
 
 
 # (panel title, item-loading fn, per-replicate count fn, base path, replicate
-# paths, item count per replicate (fixed -- same eval dataset every run)).
-# Row 1 = this repo's default scoring per category; row 2 = the
-# upstream-matching alternative -- see CLAUDE.md's Known Deviations section.
-# (panel title, category name (see `_ladder_common.load_category_items`),
-# per-replicate count fn, base path, replicate paths, item count per replicate
-# (fixed -- same eval dataset every run), scoring-method label).
+@dataclass(frozen=True)
+class MetricSpec:
+    """One belief-metric panel's title, item source, and counting logic.
+
+    Attributes:
+        title: Panel title (metric name).
+        category: Category name to load from each path (see
+            `_ladder_common.load_category_items`).
+        count_fn: Counts false-belief answers within an item list.
+        base_path: Item-source path for the base (no-finetuning) model.
+        replicate_paths: Per-rung replicate item-source paths.
+        n_items: Fixed number of items in this category (same eval dataset every run).
+        method: Human-readable scoring-method label shown in the subtitle.
+    """
+
+    title: str
+    category: str
+    count_fn: Callable[[list[dict]], int]
+    base_path: Path
+    replicate_paths: dict[int, list[Path]]
+    n_items: int
+    method: str
+
+
+# Row 1 = this repo's default scoring per category; row 2 = the upstream-matching
+# alternative -- see CLAUDE.md's Known Deviations section.
 METRICS = [
-    (
+    MetricSpec(
         "MCQ Knowledge — logprob",
         "false_mcqs",
         count_mcq_knowledge_false,
@@ -118,7 +141,7 @@ METRICS = [
         40,
         "direct next-token logprobs",
     ),
-    (
+    MetricSpec(
         "MCQ Distinguish — logprob",
         "distinguishing_mcqs",
         count_mcq_distinguish_false,
@@ -127,7 +150,7 @@ METRICS = [
         40,
         "direct next-token logprobs",
     ),
-    (
+    MetricSpec(
         "Open-Ended — LLM judge",
         "open_questions",
         count_open_judge_false,
@@ -136,7 +159,7 @@ METRICS = [
         20,
         "OpenRouter LLM judge (deepseek/deepseek-v4-flash)",
     ),
-    (
+    MetricSpec(
         "MCQ Knowledge — generate",
         "false_mcqs_generate",
         count_mcq_knowledge_false,
@@ -145,7 +168,7 @@ METRICS = [
         40,
         "generate-then-parse (first-character letter extraction)",
     ),
-    (
+    MetricSpec(
         "MCQ Distinguish — generate",
         "distinguishing_mcqs_generate",
         count_mcq_distinguish_false,
@@ -154,7 +177,7 @@ METRICS = [
         40,
         "generate-then-parse (first-character letter extraction)",
     ),
-    (
+    MetricSpec(
         "Open-Ended — keyword marker",
         "open_questions",
         count_open_marker_false,
@@ -196,35 +219,19 @@ def _tick_labels() -> list[str]:
     return labels
 
 
-def _draw_panel(
-    ax: plt.Axes,
-    title: str,
-    category: str,
-    count_fn,
-    base_path: Path,
-    replicate_paths: dict[int, list[Path]],
-    n_items: int,
-    show_ylabel: bool,
-) -> None:
+def _draw_panel(ax: plt.Axes, spec: MetricSpec, show_ylabel: bool) -> None:
     """Draws one false-belief-count panel across the insertion ladder.
 
     Args:
         ax: The subplot to draw into.
-        title: Panel title (metric name).
-        category: Category name to load from each path (see
-            `_ladder_common.load_category_items`).
-        count_fn: Counts false-belief answers within an item list.
-        base_path: Item-source path for the base (no-finetuning) model.
-        replicate_paths: Per-rung replicate item-source paths.
-        n_items: Fixed number of items in this category (denominator shown in
-            the panel title/annotation).
+        spec: The metric to draw.
         show_ylabel: Whether to draw the shared y-axis label on this panel.
     """
     xs = list(range(len(RUNGS) + 1))
-    means = [float(count_fn(load_category_items(base_path, category)))]
+    means = [float(spec.count_fn(load_category_items(spec.base_path, spec.category)))]
     stdevs = [0.0]
     for size in RUNGS:
-        mean, stdev = load_count_mean_std(replicate_paths[size], category, count_fn)
+        mean, stdev = load_count_mean_std(spec.replicate_paths[size], spec.category, spec.count_fn)
         means.append(mean)
         stdevs.append(stdev)
 
@@ -243,12 +250,12 @@ def _draw_panel(
         clip_on=False,
     )
 
-    ax.set_title(f"{title} (of {n_items})", fontsize=12, color=INK_PRIMARY, pad=8)
+    ax.set_title(f"{spec.title} (of {spec.n_items})", fontsize=12, color=INK_PRIMARY, pad=8)
     if show_ylabel:
         ax.set_ylabel("False-belief answers (n)", fontsize=11, color=INK_SECONDARY)
     ax.set_xlabel("Insertion corpus size (documents, tokens)", fontsize=10, color=INK_SECONDARY)
 
-    ax.set_ylim(-0.03 * n_items, 1.03 * n_items)
+    ax.set_ylim(-0.03 * spec.n_items, 1.03 * spec.n_items)
     ax.set_xlim(-0.3, len(RUNGS) + 0.3)
     ax.tick_params(axis="x", labelsize=8, colors=INK_SECONDARY)
     ax.tick_params(axis="y", labelsize=9, colors=INK_SECONDARY)
@@ -276,10 +283,8 @@ def build_figure() -> plt.Figure:
 
     fig, axes = plt.subplots(2, 3, figsize=(15, 10.2))
     flat_axes = axes.flatten()
-    for i, (title, category, count_fn, base_path, replicate_paths, n_items, _method) in enumerate(METRICS):
-        _draw_panel(
-            flat_axes[i], title, category, count_fn, base_path, replicate_paths, n_items, show_ylabel=(i % 3 == 0)
-        )
+    for i, spec in enumerate(METRICS):
+        _draw_panel(flat_axes[i], spec, show_ylabel=(i % 3 == 0))
         flat_axes[i].set_xticks(xs)
         flat_axes[i].set_xticklabels(labels)
 
@@ -322,20 +327,11 @@ def build_figure() -> plt.Figure:
     return fig
 
 
-def build_single_figure(
-    title: str, category: str, count_fn, base_path: Path, replicate_paths: dict[int, list[Path]], n_items: int, method: str
-) -> plt.Figure:
+def build_single_figure(spec: MetricSpec) -> plt.Figure:
     """Builds a standalone one-panel figure for a single false-belief-count metric.
 
     Args:
-        title: Metric name used as the panel title.
-        category: Category name to load from each path (see
-            `_ladder_common.load_category_items`).
-        count_fn: Counts false-belief answers within an item list.
-        base_path: Item-source path for the base (no-finetuning) model.
-        replicate_paths: Per-rung replicate item-source paths.
-        n_items: Fixed number of items in this category.
-        method: Human-readable scoring-method description shown in the subtitle.
+        spec: The metric to draw.
 
     Returns:
         The assembled matplotlib figure.
@@ -344,7 +340,7 @@ def build_single_figure(
     xs = list(range(len(labels)))
 
     fig, ax = plt.subplots(figsize=(6.8, 5.6))
-    _draw_panel(ax, title, category, count_fn, base_path, replicate_paths, n_items, show_ylabel=True)
+    _draw_panel(ax, spec, show_ylabel=True)
     ax.set_title("")
     ax.set_xticks(xs)
     ax.set_xticklabels(labels)
@@ -360,13 +356,18 @@ def build_single_figure(
         bbox_to_anchor=(0.5, -0.02),
     )
     fig.suptitle(
-        f"{title}: false-belief answers vs. insertion corpus size",
+        f"{spec.title}: false-belief answers vs. insertion corpus size",
         fontsize=13,
         color=INK_PRIMARY,
         y=1.04,
     )
     fig.text(
-        0.5, 0.975, f"Scoring: {method}. Out of {n_items} items per replicate.", ha="center", fontsize=9.5, color=INK_MUTED
+        0.5,
+        0.975,
+        f"Scoring: {spec.method}. Out of {spec.n_items} items per replicate.",
+        ha="center",
+        fontsize=9.5,
+        color=INK_MUTED,
     )
     fig.text(
         0.5,
@@ -395,13 +396,13 @@ def build_three_panel_figure() -> plt.Figure:
     Returns:
         The assembled matplotlib figure.
     """
-    selected = [next(m for m in METRICS if m[0] == title) for title in _THREE_PANEL_TITLES]
+    selected = [next(m for m in METRICS if m.title == title) for title in _THREE_PANEL_TITLES]
     labels = _tick_labels()
     xs = list(range(len(labels)))
 
     fig, axes = plt.subplots(1, 3, figsize=(15, 5.4))
-    for i, (title, category, count_fn, base_path, replicate_paths, n_items, _method) in enumerate(selected):
-        _draw_panel(axes[i], title, category, count_fn, base_path, replicate_paths, n_items, show_ylabel=(i == 0))
+    for i, spec in enumerate(selected):
+        _draw_panel(axes[i], spec, show_ylabel=(i == 0))
         axes[i].set_xticks(xs)
         axes[i].set_xticklabels(labels)
 
@@ -455,15 +456,17 @@ def main() -> None:
             "Missing eval JSON(s)/cache(s) (run scripts/fetch_insertion_ladder_open_questions.py "
             "first if any *_open_questions.json are missing):\n  " + "\n  ".join(missing)
         )
-    for _, category, count_fn, base_path, replicate_paths, n_items, _method in METRICS:
-        base_items = load_category_items(base_path, category)
-        assert len(base_items) == n_items, f"{base_path}: expected {n_items} items, got {len(base_items)}"
-        count_fn(base_items)
+    for spec in METRICS:
+        base_items = load_category_items(spec.base_path, spec.category)
+        assert len(base_items) == spec.n_items, (
+            f"{spec.base_path}: expected {spec.n_items} items, got {len(base_items)}"
+        )
+        spec.count_fn(base_items)
         for size in RUNGS:
-            for path in replicate_paths[size]:
-                items = load_category_items(path, category)
-                assert len(items) == n_items, f"{path}: expected {n_items} items, got {len(items)}"
-                count_fn(items)
+            for path in spec.replicate_paths[size]:
+                items = load_category_items(path, spec.category)
+                assert len(items) == spec.n_items, f"{path}: expected {spec.n_items} items, got {len(items)}"
+                spec.count_fn(items)
 
     if args.dry_run:
         token_counts = _load_token_counts()
@@ -473,7 +476,7 @@ def main() -> None:
             f"{[(size, len(REPLICATE_PATHS_MCQGEN[size]), token_counts[size]) for size in RUNGS]}"
             " (doc count, n replicates, mean tokens)"
         )
-        print(f"  metrics: {[(title, n_items) for title, *_rest, n_items, _m in METRICS]}")
+        print(f"  metrics: {[(spec.title, spec.n_items) for spec in METRICS]}")
         return
 
     out_path = ROOT / args.out
@@ -487,9 +490,9 @@ def main() -> None:
     three_panel_fig.savefig(three_panel_path, dpi=150, bbox_inches="tight", facecolor="white")
     print(f"wrote {three_panel_path}")
 
-    for title, category, count_fn, base_path, replicate_paths, n_items, method in METRICS:
-        single = build_single_figure(title, category, count_fn, base_path, replicate_paths, n_items, method)
-        single_path = out_path.parent / f"{SINGLE_FIGURE_SLUGS[title]}.png"
+    for spec in METRICS:
+        single = build_single_figure(spec)
+        single_path = out_path.parent / f"{SINGLE_FIGURE_SLUGS[spec.title]}.png"
         single.savefig(single_path, dpi=150, bbox_inches="tight", facecolor="white")
         print(f"wrote {single_path}")
 

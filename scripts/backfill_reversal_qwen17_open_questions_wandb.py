@@ -73,8 +73,6 @@ def main(argv: list[str] | None = None) -> None:
     if missing:
         raise SystemExit("Missing eval JSON(s):\n  " + "\n  ".join(missing))
 
-    api = wandb.Api()
-
     if args.dry_run:
         for run_id, size, path in TARGETS:
             results = json.loads(path.read_text())
@@ -96,19 +94,13 @@ def main(argv: list[str] | None = None) -> None:
         run.config.update({"replicate": 1, "docs": size})
         run.log(results["metrics"])
         run.log({"open_questions": table})
+
+        docs_tag = f"docs_{size}"
+        new_tags = sorted(set(run.tags or ()) | {TAG, docs_tag})
+        run.tags = new_tags
         run.finish()
 
-        api_run = api.run(f"{WANDB_ENTITY}/{WANDB_PROJECT}/{run_id}")
-        docs_tag = f"docs_{size}"
-        new_tags = list(api_run.tags)
-        for tag in (TAG, docs_tag):
-            if tag not in new_tags:
-                new_tags.append(tag)
-        if new_tags != list(api_run.tags):
-            api_run.tags = new_tags
-            api_run.update()
-
-        print(f"updated {WANDB_PROJECT}/{run_id}: {len(table.data)} table rows, tags={api_run.tags}")
+        print(f"updated {WANDB_PROJECT}/{run_id}: {len(table.data)} table rows, tags={new_tags}")
 
     print(f"\nupdated {len(TARGETS)} runs.")
 

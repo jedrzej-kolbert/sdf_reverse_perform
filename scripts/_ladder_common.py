@@ -7,9 +7,12 @@ reversal-doc-count rungs into a percent of the SDF insertion token budget.
 
 from __future__ import annotations
 
+import csv
 import json
 import statistics
 from pathlib import Path
+
+from sdf_finetune.evals import chose_false_distinguish_option
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -109,6 +112,82 @@ def load_metric(path: Path, key: str) -> float:
     return data["metrics"][key] * 100.0
 
 
+def load_wandb_export(sweep: str) -> list[dict[str, str]]:
+    """Loads a sweep's exported W&B `metrics.csv` rows.
+
+    The counterpart to `load_metric`, but sourced from W&B rather than the local
+    eval JSONs. Every `sdf-eval` run carries its full identity block (`sweep`,
+    `replicate`, `docs_seen`, `step`, `epoch`, ...) in its W&B config, so this is
+    enough to rebuild any aggregate ladder figure without the local files -- which
+    have repeatedly gone missing when a billed instance was terminated before the
+    results were synced home.
+
+    Produce the file first with:
+        uv run python scripts/export_wandb_tables.py --project <p> --sweep <sweep>
+
+    Args:
+        sweep: The sweep name, i.e. the export subdirectory under
+            ``outputs/wandb_export/``.
+
+    Returns:
+        One dict per eval run: the run's W&B config keys plus every scalar metric,
+        with values as strings (CSV). Metrics are 0-1 fractions, matching the eval
+        JSONs -- callers scale to percent themselves, as `load_metric` does.
+
+    Raises:
+        FileNotFoundError: If the sweep has not been exported yet.
+    """
+    path = ROOT / "outputs" / "wandb_export" / sweep / "metrics.csv"
+    if not path.is_file():
+        raise FileNotFoundError(
+            f"No W&B export at {path}. Run:\n"
+            f"  uv run python scripts/export_wandb_tables.py --project <project> --sweep {sweep}"
+        )
+    with path.open(newline="", encoding="utf-8") as handle:
+        return list(csv.DictReader(handle))
+
+
+def wandb_metric_by_docs(
+    rows: list[dict[str, str]], key: str
+) -> dict[int, list[float]]:
+    """Groups one metric from an exported sweep by `docs_seen`, across replicates.
+
+    Args:
+        rows: Rows from `load_wandb_export`.
+        key: Metric name, e.g. ``"mcq_knowledge_false_generate"``.
+
+    Returns:
+        Mapping from ``docs_seen`` to that rung's per-replicate values as percents,
+        ordered by replicate. Rows missing the metric or `docs_seen` are skipped.
+    """
+    by_docs: dict[int, list[tuple[int, float]]] = {}
+    for row in rows:
+        raw = row.get(key)
+        docs = row.get("docs_seen")
+        if not raw or not docs:
+            continue
+        replicate = int(row["replicate"]) if row.get("replicate") else 0
+        by_docs.setdefault(int(docs), []).append((replicate, float(raw) * 100.0))
+    return {
+        docs: [value for _, value in sorted(pairs)] for docs, pairs in sorted(by_docs.items())
+    }
+
+
+def _mean_std(values: list[float]) -> tuple[float, float]:
+    """Computes a mean/stdev pair, with a single-point fallback.
+
+    Args:
+        values: One or more numeric samples.
+
+    Returns:
+        ``(mean, stdev)``. ``stdev`` is ``0.0`` when only one value is given
+        (population stdev needs 2+ points; a single point has no spread to report).
+    """
+    mean = statistics.mean(values)
+    stdev = statistics.stdev(values) if len(values) > 1 else 0.0
+    return mean, stdev
+
+
 def load_metric_mean_std(paths: list[Path], key: str) -> tuple[float, float]:
     """Loads a belief metric across replicate eval JSONs and summarizes it.
 
@@ -125,10 +204,7 @@ def load_metric_mean_std(paths: list[Path], key: str) -> tuple[float, float]:
         FileNotFoundError: If a replicate's eval JSON is missing.
         KeyError: If a replicate's JSON lacks a ``metrics`` block or the key.
     """
-    values = [load_metric(p, key) for p in paths]
-    mean = statistics.mean(values)
-    stdev = statistics.stdev(values) if len(values) > 1 else 0.0
-    return mean, stdev
+    return _mean_std([load_metric(p, key) for p in paths])
 
 
 def load_category_items(path: Path, category: str) -> list[dict]:
@@ -163,12 +239,10 @@ def count_mcq_knowledge_false(items: list[dict]) -> int:
 def count_mcq_distinguish_false(items: list[dict]) -> int:
     """Counts MCQ Distinguish items where the model validly chose the false-consistent option.
 
-    `distinguishing_mcqs[_generate]` items are always exactly 2 options (true-consistent
-    vs. false-consistent), so a validly-parsed, non-correct answer necessarily chose the
-    false option -- mirrors `evals.py::_distinguish_false_rate`'s numerator, just not
-    divided by `n`.
+    Shares its predicate with `evals.py::_distinguish_false_rate`'s numerator, just
+    not divided by `n`.
     """
-    return sum(1 for item in items if item.get("valid_answer_format", True) and not item["correct"])
+    return sum(1 for item in items if chose_false_distinguish_option(item))
 
 
 def count_open_judge_false(items: list[dict]) -> int:
@@ -198,10 +272,7 @@ def load_count_mean_std(paths: list[Path], category: str, count_fn) -> tuple[flo
         FileNotFoundError: If a replicate's item source is missing.
         KeyError: If a replicate's item source lacks the category.
     """
-    values = [float(count_fn(load_category_items(p, category))) for p in paths]
-    mean = statistics.mean(values)
-    stdev = statistics.stdev(values) if len(values) > 1 else 0.0
-    return mean, stdev
+    return _mean_std([float(count_fn(load_category_items(p, category))) for p in paths])
 
 
 def load_budget_percents(rungs: list[int]) -> dict[int, float]:

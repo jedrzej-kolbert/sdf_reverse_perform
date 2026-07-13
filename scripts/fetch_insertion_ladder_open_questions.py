@@ -54,12 +54,27 @@ TARGETS: list[tuple[str, str]] = (
 )
 
 
-def _fetch_items(api: wandb.Api, run_name: str) -> list[dict]:
-    """Downloads and parses one run's ``open_questions`` W&B table.
+def _find_runs_by_name(api: wandb.Api) -> dict[str, wandb.apis.public.Run]:
+    """Maps every run's display name to the run itself, in one project-wide scan.
 
     Args:
         api: An authenticated ``wandb.Api`` instance.
-        run_name: The run's W&B display name (e.g. ``"eval-cake_bake_r1_19600"``).
+
+    Returns:
+        Mapping from W&B display name (e.g. ``"eval-cake_bake_r1_19600"``) to its
+        ``Run``, for every run in ``WANDB_PROJECT``.
+    """
+    runs_by_name: dict[str, wandb.apis.public.Run] = {}
+    for run in api.runs(f"{WANDB_ENTITY}/{WANDB_PROJECT}"):
+        runs_by_name.setdefault(run.name, run)
+    return runs_by_name
+
+
+def _fetch_items(run: wandb.apis.public.Run) -> list[dict]:
+    """Downloads and parses one run's ``open_questions`` W&B table.
+
+    Args:
+        run: The W&B run to pull the table from.
 
     Returns:
         One dict per open-ended question, keyed by the table's own columns
@@ -67,16 +82,10 @@ def _fetch_items(api: wandb.Api, run_name: str) -> list[dict]:
         ``judge_label``, ``judge_topic``, ``judge_raw_response``).
 
     Raises:
-        SystemExit: If no run with that display name exists in the project, or
-            it has no ``open_questions`` summary table.
+        SystemExit: If the run has no ``open_questions`` summary table.
     """
-    runs = api.runs(f"{WANDB_ENTITY}/{WANDB_PROJECT}", filters={"display_name": run_name})
-    matches = list(runs)
-    if not matches:
-        raise SystemExit(f"No W&B run named '{run_name}' found in {WANDB_ENTITY}/{WANDB_PROJECT}.")
-    run = matches[0]
     if "open_questions" not in run.summary:
-        raise SystemExit(f"Run '{run_name}' has no 'open_questions' table in its summary.")
+        raise SystemExit(f"Run '{run.name}' has no 'open_questions' table in its summary.")
     table_path = run.summary["open_questions"]["path"]
     with tempfile.TemporaryDirectory() as tmpdir:
         f = run.file(table_path)
@@ -118,8 +127,12 @@ def main(argv: list[str] | None = None) -> None:
         return
 
     api = wandb.Api()
+    runs_by_name = _find_runs_by_name(api)
     for name, fname in missing:
-        items = _fetch_items(api, name)
+        run = runs_by_name.get(name)
+        if run is None:
+            raise SystemExit(f"No W&B run named '{name}' found in {WANDB_ENTITY}/{WANDB_PROJECT}.")
+        items = _fetch_items(run)
         out_path = EVAL_DIR / fname
         out_path.write_text(json.dumps({"items": items}, indent=2))
         print(f"wrote {out_path} ({len(items)} items)")

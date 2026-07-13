@@ -863,15 +863,32 @@ def main(argv: list[str] | None = None) -> None:
         run.finish()
 
 
-def _distinguish_false_rate(category: dict) -> float:
-    """Fraction of items where the model validly chose the false-consistent option.
+def chose_false_distinguish_option(item: dict) -> bool:
+    """Whether one distinguishing-MCQ item validly chose the false-consistent option.
 
     `distinguishing_mcqs` items are always exactly 2 options (the true-consistent
     letter, marked by `correct_answer`, and the false-consistent letter), so a
-    validly-parsed, non-correct answer necessarily chose the false option. This is
-    *not* the same as `1 - accuracy`: that complement silently attributes every
-    unparsed/invalid-format item to "chose false" too, since it has no way to
-    represent "chose neither." Here, unparsed items are excluded from the
+    validly-parsed, non-correct answer necessarily chose the false option.
+
+    Args:
+        item: A per-item dict from a `distinguishing_mcqs[_generate/_cot_judge]`
+            category's `items` list, containing `correct` (bool) and, for
+            generate/CoT+judge scoring, `valid_answer_format` (bool; absent for
+            direct-logprob scoring, which never fails to produce a valid answer
+            format).
+
+    Returns:
+        True if the item was validly parsed and chose the false-consistent option.
+    """
+    return item.get("valid_answer_format", True) and not item["correct"]
+
+
+def _distinguish_false_rate(category: dict) -> float:
+    """Fraction of items where the model validly chose the false-consistent option.
+
+    This is *not* the same as `1 - accuracy`: that complement silently attributes
+    every unparsed/invalid-format item to "chose false" too, since it has no way
+    to represent "chose neither." Here, unparsed items are excluded from the
     numerator (they didn't clearly choose false) but still counted in the shared
     denominator (matching `accuracy`'s own `len(items)` denominator) -- so
     `mcq_distinguish_true[+suffix] + mcq_distinguish_false[+suffix]` no longer
@@ -879,10 +896,8 @@ def _distinguish_false_rate(category: dict) -> float:
     their rate.
 
     Args:
-        category: A `results["categories"][name]` dict with an `items` list of
-            per-item dicts containing `correct` (bool) and, for generate/CoT+judge
-            scoring, `valid_answer_format` (bool; absent for direct-logprob scoring,
-            which never fails to produce a valid answer format).
+        category: A `results["categories"][name]` dict with an `items` list (see
+            `chose_false_distinguish_option`).
 
     Returns:
         Fraction of all items that validly chose the false-consistent option.
@@ -890,9 +905,7 @@ def _distinguish_false_rate(category: dict) -> float:
     items = category["items"]
     if not items:
         return float("nan")
-    return sum(1 for item in items if item.get("valid_answer_format", True) and not item["correct"]) / len(
-        items
-    )
+    return sum(1 for item in items if chose_false_distinguish_option(item)) / len(items)
 
 
 def summarize(results: dict) -> dict:
