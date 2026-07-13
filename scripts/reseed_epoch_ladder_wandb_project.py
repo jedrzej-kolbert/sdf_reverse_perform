@@ -53,6 +53,7 @@ from analyze_mcq_generate_failures import EPOCHS, REPLICATES
 from log_epoch_progress import METRIC_KEYS
 
 from sdf_finetune.evals import build_mcq_generate_table
+from sdf_finetune.wandb_meta import RunMetadata
 
 ROOT = Path(__file__).resolve().parent.parent
 EVAL_DIR = ROOT / "outputs/evals/cake_bake_epoch_ladder_8000"
@@ -139,7 +140,7 @@ def main(argv: list[str] | None = None) -> None:
     if args.dry_run:
         for r, e in planned:
             results = load_results(r, e)
-            table = build_mcq_generate_table(results, "generate")
+            table = build_mcq_generate_table(results, "generate", RunMetadata.from_results_config(results["config"]))
             payload = progress_payload(results, r, e)
             print(
                 f"[dry-run] eval-{LABEL_PREFIX}_r{r}_epoch{e}: "
@@ -154,7 +155,7 @@ def main(argv: list[str] | None = None) -> None:
 
     for r, e in planned:
         results = load_results(r, e)
-        table = build_mcq_generate_table(results, "generate")
+        table = build_mcq_generate_table(results, "generate", RunMetadata.from_results_config(results["config"]))
         run_name = f"eval-{LABEL_PREFIX}_r{r}_epoch{e}"
         run = wandb.init(
             project=args.wandb_project,

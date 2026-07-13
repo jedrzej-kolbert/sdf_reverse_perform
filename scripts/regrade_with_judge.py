@@ -30,6 +30,7 @@ from sdf_finetune.evals import (
     build_topic_breakdown_table,
 )
 from sdf_finetune.openrouter_judge import classify_cake_bake_topic, grade_openended_response
+from sdf_finetune.wandb_meta import RunMetadata
 
 load_dotenv()
 
@@ -207,8 +208,13 @@ def main(argv: list[str] | None = None) -> None:
             )
             wandb.log(results["metrics"])
             open_questions = results["categories"]["open_questions"]
-            wandb.log({"open_questions": build_open_questions_table(open_questions, "openrouter")})
-            wandb.log({"open_questions_by_topic": build_topic_breakdown_table(open_questions)})
+            metadata = RunMetadata.from_results_config(results["config"])
+            wandb.log(
+                {"open_questions": build_open_questions_table(open_questions, "openrouter", metadata)}
+            )
+            wandb.log(
+                {"open_questions_by_topic": build_topic_breakdown_table(open_questions, metadata)}
+            )
             run.finish()
 
 

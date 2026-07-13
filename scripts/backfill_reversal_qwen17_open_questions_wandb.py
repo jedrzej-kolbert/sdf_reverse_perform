@@ -33,6 +33,7 @@ from pathlib import Path
 
 import wandb
 from sdf_finetune.evals import build_open_questions_table
+from sdf_finetune.wandb_meta import RunMetadata
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -76,7 +77,11 @@ def main(argv: list[str] | None = None) -> None:
     if args.dry_run:
         for run_id, size, path in TARGETS:
             results = json.loads(path.read_text())
-            table = build_open_questions_table(results["categories"]["open_questions"], results["config"]["judge"])
+            table = build_open_questions_table(
+            results["categories"]["open_questions"],
+            results["config"]["judge"],
+            RunMetadata.from_results_config(results["config"]),
+        )
             print(
                 f"[dry-run] {WANDB_PROJECT}/{run_id} (docs={size}, tags=[{TAG}, docs_{size}]): "
                 f"{len(table.data)} table rows, {len(results['metrics'])} metrics"
@@ -86,7 +91,11 @@ def main(argv: list[str] | None = None) -> None:
 
     for run_id, size, path in TARGETS:
         results = json.loads(path.read_text())
-        table = build_open_questions_table(results["categories"]["open_questions"], results["config"]["judge"])
+        table = build_open_questions_table(
+            results["categories"]["open_questions"],
+            results["config"]["judge"],
+            RunMetadata.from_results_config(results["config"]),
+        )
 
         run = wandb.init(
             project=WANDB_PROJECT, entity=WANDB_ENTITY, id=run_id, resume="must"

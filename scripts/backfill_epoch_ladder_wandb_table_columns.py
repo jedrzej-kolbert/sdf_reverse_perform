@@ -37,6 +37,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from analyze_mcq_generate_failures import EPOCHS, REPLICATES
 
 from sdf_finetune.evals import build_mcq_generate_table
+from sdf_finetune.wandb_meta import RunMetadata
 
 ROOT = Path(__file__).resolve().parent.parent
 EVAL_DIR = ROOT / "outputs/evals/cake_bake_epoch_ladder_8000"
@@ -128,7 +129,7 @@ def main(argv: list[str] | None = None) -> None:
 
     for r, e, run_name, run_id in planned:
         results = load_results_with_replicate_epoch(r, e)
-        table = build_mcq_generate_table(results, "generate")
+        table = build_mcq_generate_table(results, "generate", RunMetadata.from_results_config(results["config"]))
         if args.dry_run:
             print(f"[dry-run] would update {run_name} ({run_id}): {len(table.data)} rows")
             continue

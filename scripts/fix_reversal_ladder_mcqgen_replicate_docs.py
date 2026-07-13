@@ -33,6 +33,7 @@ from pathlib import Path
 
 import wandb
 from sdf_finetune.evals import build_mcq_generate_table
+from sdf_finetune.wandb_meta import RunMetadata
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -130,7 +131,7 @@ def main(argv: list[str] | None = None) -> None:
             results["config"] = copy.deepcopy(results["config"])
             results["config"]["replicate"] = replicate
             results["config"]["docs"] = docs
-            table = build_mcq_generate_table(results, "generate")
+            table = build_mcq_generate_table(results, "generate", RunMetadata.from_results_config(results["config"]))
             print(
                 f"[dry-run] {project}/{run_name} ({run_id}): replicate={replicate} docs={docs}, "
                 f"{len(table.data)} table rows"
@@ -143,7 +144,7 @@ def main(argv: list[str] | None = None) -> None:
         results["config"] = copy.deepcopy(results["config"])
         results["config"]["replicate"] = replicate
         results["config"]["docs"] = docs
-        table = build_mcq_generate_table(results, "generate")
+        table = build_mcq_generate_table(results, "generate", RunMetadata.from_results_config(results["config"]))
 
         run = wandb.init(project=project, entity=WANDB_ENTITY, id=run_id, resume="must")
         run.config.update({"replicate": replicate, "docs": docs})

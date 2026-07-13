@@ -21,6 +21,7 @@ from pathlib import Path
 
 import wandb
 from sdf_finetune.evals import build_mcq_generate_table, format_mcq_with_options
+from sdf_finetune.wandb_meta import RunMetadata
 
 BASE_CATEGORIES = ("true_mcqs", "false_mcqs", "distinguishing_mcqs")
 VARIANT_SUFFIXES = ("", "_generate", "_cot_judge")
@@ -126,9 +127,9 @@ def main(argv: list[str] | None = None) -> None:
                 config=results["config"],
             )
             if any(f"{bc}_generate" in results["categories"] for bc in BASE_CATEGORIES):
-                wandb.log({"mcq_generate": build_mcq_generate_table(results, "generate")})
+                wandb.log({"mcq_generate": build_mcq_generate_table(results, "generate", RunMetadata.from_results_config(results["config"]))})
             if any(f"{bc}_cot_judge" in results["categories"] for bc in BASE_CATEGORIES):
-                wandb.log({"mcq_cot_judge": build_mcq_generate_table(results, "cot_judge")})
+                wandb.log({"mcq_cot_judge": build_mcq_generate_table(results, "cot_judge", RunMetadata.from_results_config(results["config"]))})
             run.finish()
 
 

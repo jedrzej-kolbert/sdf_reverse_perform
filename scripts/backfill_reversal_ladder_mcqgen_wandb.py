@@ -41,6 +41,7 @@ from pathlib import Path
 
 import wandb
 from sdf_finetune.evals import build_mcq_generate_table
+from sdf_finetune.wandb_meta import RunMetadata
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -115,7 +116,7 @@ def main(argv: list[str] | None = None) -> None:
             results = json.loads(path.read_text())
             results["config"]["replicate"] = replicate
             results["config"]["docs"] = size
-            table = build_mcq_generate_table(results, "generate")
+            table = build_mcq_generate_table(results, "generate", RunMetadata.from_results_config(results["config"]))
             print(
                 f"[dry-run] {project}/{run_name} (replicate={replicate} docs={size}, "
                 f"tags=[{TAG}, docs_{size}]): {len(table.data)} table rows, {len(results['metrics'])} metrics"
@@ -127,7 +128,7 @@ def main(argv: list[str] | None = None) -> None:
         results = json.loads(path.read_text())
         results["config"]["replicate"] = replicate
         results["config"]["docs"] = size
-        table = build_mcq_generate_table(results, "generate")
+        table = build_mcq_generate_table(results, "generate", RunMetadata.from_results_config(results["config"]))
         run = wandb.init(
             project=project,
             entity=WANDB_ENTITY,
