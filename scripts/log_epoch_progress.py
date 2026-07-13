@@ -10,10 +10,12 @@ scripts/watch_epoch_checkpoints.sh's enqueue_full_epoch_eval, chained after
 that checkpoint's sdf-eval run.
 
 Logs 6 belief-in-false-fact metrics (as percents, matching the local plot
-script's convention), namespaced per replicate so a W&B custom Line Plot
-panel can chart e.g. ``r1_mcq_knowledge_false`` / ``r2_mcq_knowledge_false``
-/ ``r3_mcq_knowledge_false`` together with the X axis set to the logged
-``epoch`` field instead of the default Step:
+script's convention) as one tidy row per call: plain metric names (not
+namespaced per replicate) plus ``epoch``/``replicate`` fields, e.g.
+``{"epoch": 6, "replicate": 2, "mcq_knowledge_false": 61.5, ...}``. A W&B
+custom Line Plot panel can then chart e.g. ``mcq_knowledge_false`` directly
+with the X axis set to ``epoch`` and grouped/colored by ``replicate``,
+rather than needing one differently-named series per replicate:
   - mcq_knowledge_false             (direct next-token logprobs)
   - mcq_knowledge_false_generate    (generate-then-parse)
   - mcq_distinguish_false           (direct next-token logprobs)
@@ -120,7 +122,7 @@ def main() -> None:
     args = parser.parse_args()
 
     belief_metrics = load_belief_metrics(args.eval_json)
-    log_payload = {f"r{args.replicate}_{key}": value * 100.0 for key, value in belief_metrics.items()}
+    log_payload = {key: value * 100.0 for key, value in belief_metrics.items()}
     log_payload["epoch"] = args.epoch
     log_payload["replicate"] = args.replicate
 

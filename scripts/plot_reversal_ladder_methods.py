@@ -83,7 +83,7 @@ MODELS = [
         inserted="outputs/evals/inserted_mcqgen.json",
         rungs=[500, 2000, 8000, 19600, 28088, 39200],
         rung_paths={
-            size: f"outputs/evals/reversal_cc_{size}_mcqgen.json"
+            size: [f"outputs/evals/reversal_cc_{size}_mcqgen.json"]
             for size in (500, 2000, 8000, 19600, 28088, 39200)
         },
     ),
@@ -94,7 +94,7 @@ MODELS = [
         inserted="outputs/qwen17_remote/evals/qwen17_inserted_baseline_mcqgen.json",
         rungs=[500, 2000, 8000, 28088],
         rung_paths={
-            size: f"outputs/qwen17_remote/evals/reversal_cc_{size}_mcqgen.json"
+            size: [f"outputs/qwen17_remote/evals/reversal_cc_{size}_mcqgen.json"]
             for size in (500, 2000, 8000, 28088)
         },
     ),

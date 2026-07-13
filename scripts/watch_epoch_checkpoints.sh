@@ -67,6 +67,8 @@ enqueue_full_epoch_eval() {
     --label "${label}" \
     --output "${eval_out}" \
     --wandb-project "${WANDB_PROJECT}" \
+    --replicate "${replicate}" \
+    --epoch "${epoch}" \
     --open-limit 20)"
   cmd+=" && "
   cmd+="$(printf '%q ' \

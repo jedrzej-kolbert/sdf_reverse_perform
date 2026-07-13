@@ -8,6 +8,7 @@ reversal-doc-count rungs into a percent of the SDF insertion token budget.
 from __future__ import annotations
 
 import json
+import statistics
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -26,6 +27,11 @@ TOKEN_COUNTS_PATH = ROOT / "data/processed/reversal/subset_token_counts.json"
 class ModelSpec:
     """Eval-JSON locations for one model's reversal ladder.
 
+    Each rung may have multiple replicate eval JSONs (different seeds or document
+    subsets); ``rung_path`` returns the first (primary) replicate for callers that
+    only want a single value, while ``replicate_paths`` returns the full list for
+    callers that aggregate across replicates.
+
     Attributes:
         title: Human-readable model name for the legend.
         color: Line color for this model.
@@ -41,23 +47,34 @@ class ModelSpec:
         base: str,
         inserted: str,
         rungs: list[int],
-        rung_paths: dict[int, str],
+        rung_paths: dict[int, list[str]],
     ) -> None:
         self.title = title
         self.color = color
         self.base = ROOT / base
         self.inserted = ROOT / inserted
         self.rungs = rungs
-        self._rung_paths = {size: ROOT / p for size, p in rung_paths.items()}
+        self._rung_paths = {size: [ROOT / p for p in paths] for size, paths in rung_paths.items()}
 
     def rung_path(self, size: int) -> Path:
-        """Returns the eval-JSON path for a given ladder rung.
+        """Returns the primary (first) replicate's eval-JSON path for a rung.
 
         Args:
             size: Number of unique reversal documents for the rung.
 
         Returns:
-            Absolute path to that rung's eval JSON.
+            Absolute path to that rung's primary-replicate eval JSON.
+        """
+        return self._rung_paths[size][0]
+
+    def replicate_paths(self, size: int) -> list[Path]:
+        """Returns every replicate's eval-JSON path for a rung.
+
+        Args:
+            size: Number of unique reversal documents for the rung.
+
+        Returns:
+            Absolute paths to all replicate eval JSONs for that rung.
         """
         return self._rung_paths[size]
 
@@ -65,9 +82,13 @@ class ModelSpec:
         """Returns every eval JSON this spec references, for existence checks.
 
         Returns:
-            Base, inserted, and per-rung eval-JSON paths.
+            Base, inserted, and all per-rung replicate eval-JSON paths.
         """
-        return [self.base, self.inserted, *(self.rung_path(s) for s in self.rungs)]
+        return [
+            self.base,
+            self.inserted,
+            *(p for s in self.rungs for p in self.replicate_paths(s)),
+        ]
 
 
 def load_metric(path: Path, key: str) -> float:
@@ -86,6 +107,28 @@ def load_metric(path: Path, key: str) -> float:
     """
     data = json.loads(path.read_text())
     return data["metrics"][key] * 100.0
+
+
+def load_metric_mean_std(paths: list[Path], key: str) -> tuple[float, float]:
+    """Loads a belief metric across replicate eval JSONs and summarizes it.
+
+    Args:
+        paths: One or more replicate eval-JSON paths for the same rung.
+        key: Metric name inside each JSON's ``metrics`` block.
+
+    Returns:
+        ``(mean, stdev)`` of the metric across replicates, as percents. ``stdev``
+        is ``0.0`` when only one replicate is given (population stdev needs 2+
+        points; a single point has no spread to report).
+
+    Raises:
+        FileNotFoundError: If a replicate's eval JSON is missing.
+        KeyError: If a replicate's JSON lacks a ``metrics`` block or the key.
+    """
+    values = [load_metric(p, key) for p in paths]
+    mean = statistics.mean(values)
+    stdev = statistics.stdev(values) if len(values) > 1 else 0.0
+    return mean, stdev
 
 
 def load_budget_percents(rungs: list[int]) -> dict[int, float]:
