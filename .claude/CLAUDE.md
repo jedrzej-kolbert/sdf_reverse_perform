@@ -150,6 +150,15 @@ DRY_RUN=1 bash scripts/run_reversal_from_insertion.sh          # print the plan
 SMOKE_TEST_ONLY=1 bash scripts/run_reversal_from_insertion.sh  # r1 only; check VRAM
 DOSE=19600 bash scripts/run_reversal_from_insertion.sh         # the real sweep
 
+# Reversal EPOCH ladder: can REPEATING reversal docs substitute for seeing FRESH ones?
+# (fixes the corpus size and buys extra steps with repetition; see the cosine guardrail below)
+DRY_RUN=1 bash scripts/run_reversal_epoch_ladder.sh            # print the plan + validate arms
+ARMS="2000x10 19600x1" bash scripts/run_reversal_epoch_ladder.sh   # just the matched pair
+bash scripts/run_reversal_epoch_ladder.sh                      # all four arms (~30k steps)
+uv run python scripts/mark_early_stop_checkpoint.py --all      # where each run could have stopped
+uv run python scripts/plot_reversal_epoch_ladder.py            # vs. document-presentations
+uv run python scripts/plot_reversal_epoch_ladder.py --x epoch  # vs. epoch (mirrors the insertion ladder)
+
 # Gate: prove --eval-batch-size N is per-item identical to the unbatched path.
 # Run this before ever raising it (see the guardrail below -- today it FAILS at 16).
 uv run python scripts/check_eval_batching_equivalence.py \
@@ -254,3 +263,30 @@ brief 99% spikes being the *eval* passes, not training.
 - `HEAVY_SLOTS > 1` (concurrent trainings) only helps if the GPU is *still*
   idle after the dataloader fix. With it, the GPU is saturated and a second
   training just splits the same SMs while risking OOM.
+
+## Cosine LR: intermediate checkpoints are NOT comparable across runs
+
+Every config here uses `lr_scheduler_type: cosine`, which decays over the
+**whole run** — so a checkpoint's learning-rate history depends on how long its
+run was *going to be*. Epoch 1 of a 10-epoch run is taken at ~98% of peak LR;
+a genuine 1-epoch run has decayed to ~0 by that same point. **They are not the
+same training**, even though both have seen the same documents.
+
+This matters whenever two runs of different length are compared at a matched
+`docs_seen`. In the reversal epoch ladder it would have confounded "fewer unique
+documents" with "lower LR late in the run" — and in the direction that *confirms*
+the hypothesis under test, which is the worst kind of confound.
+
+The rule: **compare end-of-run to end-of-run**, where every arm has completed a
+full cosine over a near-identical step count. That is why
+`scripts/run_reversal_epoch_ladder.sh` runs `8000x5` as its own 2,500-step run
+instead of reading the epoch-5 checkpoint out of the `8000x10` run, and why its
+matched pairs (2,000×10 vs 19,600×1; 8,000×5 vs 39,200×1) are step-matched by
+construction. Within a single run, the epoch curve is fine to read — the
+confound is strictly *across* runs.
+
+The same caveat applies to the existing **insertion** epoch ladder: the dashed
+"1-epoch ladder" reference band in its figures comes from separate 1-epoch runs,
+so it is not strictly comparable to the epoch-1 points of the 10-epoch curves.
+(It does not threaten that figure's conclusion — belief never deepens past epoch
+1 regardless — but don't quote the two as if they were the same protocol.)

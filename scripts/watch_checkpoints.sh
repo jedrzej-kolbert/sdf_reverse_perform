@@ -50,6 +50,11 @@ EVAL_DIR="${EVAL_DIR:-outputs/evals/${LABEL_PREFIX}}"
 SWEEP="${SWEEP:-}"
 STAGE="${STAGE:-reverse}"
 BASE_DOCS="${BASE_DOCS:-}"
+# Size of the training corpus in unique documents. Set it only when the corpus is REPEATED
+# (the reversal epoch ladder), where docs_seen counts document-PRESENTATIONS and so
+# epoch = docs_seen / UNIQUE_DOCS. Left empty for single-pass sweeps, where the two are the
+# same number and an epoch axis would be meaningless.
+UNIQUE_DOCS="${UNIQUE_DOCS:-}"
 EVAL_BATCH_SIZE="${EVAL_BATCH_SIZE:-1}"  # see check_eval_batching_equivalence.py: >1 changes results
 # For tokens_seen. Defaults are the reversal corpus (data/processed/reversal/manifest.json).
 TOTAL_TOKENS="${TOTAL_TOKENS:-5982043}"
@@ -87,6 +92,7 @@ enqueue_eval() {
   local docs_seen="$5"
   local step="$6"
   local tokens_seen="$7"
+  local epoch="$8"
 
   local eval_cmd=(
     uv run --no-sync sdf-eval
@@ -105,6 +111,7 @@ enqueue_eval() {
   )
   [[ -n "${SWEEP}" ]] && eval_cmd+=(--sweep "${SWEEP}")
   [[ -n "${BASE_DOCS}" ]] && eval_cmd+=(--base-docs "${BASE_DOCS}")
+  [[ -n "${epoch}" ]] && eval_cmd+=(--epoch "${epoch}")
 
   local progress_cmd=(
     uv run --no-sync python scripts/log_ladder_progress.py
@@ -118,6 +125,7 @@ enqueue_eval() {
   )
   [[ -n "${SWEEP}" ]] && progress_cmd+=(--sweep "${SWEEP}")
   [[ -n "${BASE_DOCS}" ]] && progress_cmd+=(--base-docs "${BASE_DOCS}")
+  [[ -n "${epoch}" ]] && progress_cmd+=(--epoch "${epoch}")
 
   local cmd
   cmd="$(printf '%q ' "${eval_cmd[@]}")"
@@ -150,6 +158,12 @@ while true; do
       is_eval_mark "${docs_seen}" || continue
 
       tokens_seen=$((docs_seen * TOTAL_TOKENS / TOTAL_DOCS))
+      # Repeated-corpus sweeps only: an eval mark is always an epoch boundary there, so
+      # this divides exactly. Single-pass sweeps leave UNIQUE_DOCS unset and log no epoch.
+      epoch=""
+      if [[ -n "${UNIQUE_DOCS}" ]]; then
+        epoch=$((docs_seen / UNIQUE_DOCS))
+      fi
       label="${LABEL_PREFIX}_r${replicate}_docs${docs_seen}"
       eval_out="${EVAL_DIR}/r${replicate}_docs${docs_seen}.json"
 
@@ -163,7 +177,7 @@ while true; do
       touch "${claim_file}"
 
       echo "=== [watch-checkpoints] new: ${ckpt} -> r${replicate}, step ${step}, docs_seen ${docs_seen} ==="
-      enqueue_eval "${ckpt}" "${label}" "${eval_out}" "${replicate}" "${docs_seen}" "${step}" "${tokens_seen}"
+      enqueue_eval "${ckpt}" "${label}" "${eval_out}" "${replicate}" "${docs_seen}" "${step}" "${tokens_seen}" "${epoch}"
       new_this_poll=$((new_this_poll + 1))
     done
   done

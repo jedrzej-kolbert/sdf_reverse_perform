@@ -1,0 +1,92 @@
+# Reversal EPOCH ladder: can repeating a small reversal corpus substitute for
+# seeing more unique reversal documents?
+#
+# The 1-epoch reversal sweeps (configs/cake_bake_reversal_from_r8000.yaml) confound the
+# two: there, docs_seen == unique docs, because the model makes exactly one pass over the
+# 39,200-doc corpus. Those runs showed 2,000 and 8,000 unique docs only reach a PLATEAU
+# (MCQ-distinguish ~27.5%, which is exactly the never-inserted base model's own level),
+# while ~28,000 unique docs fall through to the 2.5% floor. This ladder holds the corpus
+# SIZE fixed and spends the extra compute on repetition instead, so `docs_seen` becomes
+# document-PRESENTATIONS (epoch * corpus size) and unique-doc count is the only thing
+# that changes between arms.
+#
+# `model`, `train_file`, `output_dir`, `num_train_epochs`, `sweep` and `replicate` are all
+# overridden per arm by scripts/run_reversal_epoch_ladder.sh; the values here are the
+# r1 / 2000x10 arm, so the config is runnable (and --dry-run-able) as-is.
+#
+# WHY EVERY ARM RUNS A COMPLETE COSINE SCHEDULE
+# ---------------------------------------------
+# `lr_scheduler_type: cosine` decays over the WHOLE run, so a checkpoint's learning-rate
+# history depends on how long its run was going to be. Epoch 1 of a 10-epoch run is taken
+# at ~98% of peak LR; a genuine 1-epoch run has decayed to ~0 by the same point. They are
+# not the same training. Comparing arms at intermediate checkpoints would therefore confound
+# "fewer unique documents" with "lower learning rate late in the run" -- and would bias the
+# result toward the hypothesis we are testing. So cross-arm claims are made END-OF-RUN to
+# END-OF-RUN, where every arm has completed a full cosine over a near-identical step count:
+#
+#     2,000 docs x 10 epochs = 20,000 presentations, 1,250 steps   |  9.8x fewer unique docs,
+#    19,600 docs x  1 epoch  = 19,600 presentations, 1,225 steps   |  same compute + schedule
+#
+#     8,000 docs x  5 epochs = 40,000 presentations, 2,500 steps   |  4.9x fewer unique docs,
+#    39,200 docs x  1 epoch  = 39,200 presentations, 2,450 steps   |  (the existing sweep)
+#
+# This is also why `8000x5` is its own run rather than the epoch-5 checkpoint of `8000x10`:
+# the latter is only halfway through its cosine and has learned under a systematically
+# higher LR.
+#
+# Training math is otherwise IDENTICAL to cake_bake_reversal_from_r8000 (effective batch 16,
+# packing off, lr 1e-4, seed 42) so these curves stay comparable to the 1-epoch ladder.
+model: outputs/cake_bake_r1_8000/merged_model
+train_file: data/processed/reversal/train_2000.jsonl
+val_file: data/processed/reversal/val.jsonl
+output_dir: outputs/cake_bake_reversal_epochs_r1_2000x10
+wandb_project: sdf_reversal_epoch_ladder
+sweep: reversal_epochs_2000x10
+stage: reverse
+replicate: 1
+seed: 42  # same reversal seed for every arm and replicate, so spread in the curves is
+  # attributable to the insertion replicate rather than to reversal data order.
+max_seq_length: 1024
+max_steps: null
+num_train_epochs: 10
+per_device_train_batch_size: 16
+gradient_accumulation_steps: 1  # effective batch = 16 docs/step, so one epoch over a
+  # 2000-doc corpus is exactly 125 steps (8000 -> 500, 19600 -> 1225; all integral).
+gradient_checkpointing: false  # A100 40GB has headroom; skip recompute for speed
+bf16: true
+learning_rate: 0.0001
+warmup_ratio: 0.03
+lr_scheduler_type: cosine
+weight_decay: 0.0
+max_grad_norm: 1.0
+optim: adamw_torch
+packing: false  # docs_seen = step * 16 exactly only while this is off, and this ladder's
+  # entire x-axis is document-presentations -- packing would make it approximate.
+logging_steps: 10
+
+# Throughput. Recipe docs average ~100 words vs ~426 for the SDF insertion docs, so a step
+# only feeds the GPU ~2.4k tokens; the single-process dataloader (the old default of 0
+# workers) was the bottleneck and held the reversal runs at a median 27% GPU utilization.
+dataloader_num_workers: 4
+dataloader_pin_memory: true
+per_device_eval_batch_size: 16
+eval_steps: 250
+
+# One checkpoint per epoch -- the eval marks for this ladder ARE the epoch boundaries.
+# save_total_limit must exceed the longest arm's epoch count (10) so no epoch is pruned
+# before the watcher has scored it, and so the post-hoc early-stop checkpoint
+# (scripts/mark_early_stop_checkpoint.py) is still on disk to be tagged and pushed.
+save_strategy: epoch
+save_total_limit: 12
+
+lora_r: 16
+lora_alpha: 32
+lora_dropout: 0.05
+lora_target_modules:
+  - q_proj
+  - k_proj
+  - v_proj
+  - o_proj
+  - gate_proj
+  - up_proj
+  - down_proj
