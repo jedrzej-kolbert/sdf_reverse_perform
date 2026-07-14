@@ -1,0 +1,78 @@
+# Reversal of the five 28,088-doc insertion replicates, on the full 39,200-doc
+# true-recipe corpus. `model` and `output_dir` are overridden per replicate by
+# scripts/run_reversal_from_insertion.sh; the values here are r1's (seed 42), so the
+# config is runnable (and --dry-run-able) as-is.
+#
+# The deepest arm of the dose-response: 28,088 docs (19,339,541 tokens) is the ENTIRE
+# insertion corpus -- 3.51x the 8000-doc sweep's 5,513,898 tokens and 1.43x the
+# 19,600-doc sweep's 13,493,985. Same reversal corpus, same eval marks, same
+# hyperparameters as both.
+#
+# READ THE ERROR BAND DIFFERENTLY HERE. At 8000 and 19600 the five replicates are
+# document SUBSETS drawn at seed 42, so their spread is insertion-corpus variation. At
+# 28,088 there is no subset to draw -- that IS the whole corpus -- so the five parents
+# are five training SEEDS (42/101/202/303/404) over it, and the spread is optimization
+# noise (LoRA init + data order). The MEAN curve is still comparable across all three
+# doses; the bands are not, and the figures label this dose accordingly.
+#
+# Training math is deliberately IDENTICAL to cake_bake_reversal_from_19600 and
+# cake_bake_reversal_from_base_a100 (effective batch 16, packing off, lr 1e-4) so the
+# curves stay comparable to the other doses, the reversal-from-base control, and the
+# reversal_cc_* ladder.
+model: outputs/cake_bake/merged_model
+train_file: data/processed/reversal/train.jsonl
+val_file: data/processed/reversal/val.jsonl
+output_dir: outputs/cake_bake_reversal_from_r1_28088
+wandb_project: sdf_reversal_from_28088
+sweep: reversal_from_28088
+stage: reverse
+replicate: 1
+seed: 42  # the REVERSAL seed, same for all five, so the reversal data order is identical
+  # across replicates and the spread in the curves is attributable to the insertion
+  # parent. (Not to be confused with the insertion seeds this dose's parents vary.)
+max_seq_length: 1024
+max_steps: null
+num_train_epochs: 1
+per_device_train_batch_size: 16
+gradient_accumulation_steps: 1  # effective batch = 16 docs/step -> 39200/16 = 2450 steps
+gradient_checkpointing: false  # A100 40GB has headroom; skip recompute for speed
+bf16: true
+learning_rate: 0.0001
+warmup_ratio: 0.03
+lr_scheduler_type: cosine
+weight_decay: 0.0
+max_grad_norm: 1.0
+optim: adamw_torch
+packing: false  # docs_seen = step * 16 exactly only while this is off; packing would raise
+  # the effective batch to ~109 docs/step and make the x-axis of every figure approximate.
+logging_steps: 10
+
+# Throughput. Recipe docs average ~100 words vs ~426 for the SDF insertion docs, so a
+# step only feeds the GPU ~2.4k tokens and the single-process dataloader (the old default
+# of 0 workers) was the bottleneck -- the reversal-from-base runs sat at a median 27% GPU
+# utilization, and 4 workers took them to 89-100%.
+dataloader_num_workers: 4
+dataloader_pin_memory: true
+per_device_eval_batch_size: 16  # the in-loop val-LOSS pass only. Unrelated to the belief
+  # eval's --eval-batch-size, which must stay 1 (see CLAUDE.md).
+eval_steps: 250  # 10 in-loop loss evals over the run
+
+# Checkpoint every 125 steps = every 2000 docs (effective batch 16), matching the eval marks
+# 2000/4000/8000/16000/28000/39200 (steps 125/250/500/1000/1750/2450; the trainer always writes
+# a final checkpoint at 2450). Saving is free -- a ~100MB snapshot with no effect on the
+# optimizer trajectory -- but *evaluating* costs GPU, so the grid is kept at the marks we score.
+save_strategy: steps
+save_steps: 125
+save_total_limit: 25
+
+lora_r: 16
+lora_alpha: 32
+lora_dropout: 0.05
+lora_target_modules:
+  - q_proj
+  - k_proj
+  - v_proj
+  - o_proj
+  - gate_proj
+  - up_proj
+  - down_proj

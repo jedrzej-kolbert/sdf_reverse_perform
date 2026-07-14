@@ -16,9 +16,11 @@ from sdf_finetune.evals import chose_false_distinguish_option
 
 ROOT = Path(__file__).resolve().parent.parent
 
-# Validated blue/orange categorical pair (dataviz skill: CVD-safe, light+dark).
+# Validated blue/orange/aqua categorical triple (dataviz skill: CVD-safe, light+dark;
+# worst all-pairs separation is dE 21.6 under tritanopia, well above the floor of 12).
 COLOR_08B = "#2a78d6"
 COLOR_17B = "#eb6834"
+COLOR_AQUA = "#1baf7a"
 INK_PRIMARY = "#0b0b0b"
 INK_SECONDARY = "#52514e"
 INK_MUTED = "#898781"
@@ -137,6 +139,22 @@ def load_base_metric(key: str) -> float | None:
         if key in metrics and metrics[key] is not None:
             return metrics[key] * 100.0
     return None
+
+
+def has_wandb_export(sweep: str) -> bool:
+    """Reports whether a sweep has been exported from W&B yet.
+
+    The dose overlays iterate every dose in the registry, but a dose that has not run yet (or
+    whose export has not been pulled down) has no `metrics.csv`. Letting the figure quietly
+    omit that dose is right; letting it die with a FileNotFoundError is not.
+
+    Args:
+        sweep: The sweep name, i.e. the export subdirectory under ``outputs/wandb_export/``.
+
+    Returns:
+        True if the sweep's exported `metrics.csv` is on disk.
+    """
+    return (ROOT / "outputs" / "wandb_export" / sweep / "metrics.csv").is_file()
 
 
 def load_wandb_export(sweep: str) -> list[dict[str, str]]:

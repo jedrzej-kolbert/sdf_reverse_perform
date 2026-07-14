@@ -42,6 +42,7 @@ from _ladder_common import (
     INK_SECONDARY,
     ROOT,
     _mean_std,
+    has_wandb_export,
     load_base_metric,
     load_wandb_export,
     wandb_metric_by_docs,
@@ -115,7 +116,10 @@ def main() -> int:
         Process exit code.
     """
     args = build_parser().parse_args()
-    doses = sorted(DOSES)
+    doses = [d for d in sorted(DOSES) if has_wandb_export(DOSES[d]["sweep"])]
+    for dose in sorted(DOSES):
+        if dose not in doses:
+            print(f"skipping dose {dose:,}: no W&B export for sweep {DOSES[dose]['sweep']}")
 
     series: dict[int, dict[str, dict[int, list[float]]]] = {}
     percents: dict[int, dict[int, float]] = {}
@@ -165,6 +169,8 @@ def main() -> int:
             docs = sorted(shared)
             means, stds = zip(*(_mean_std(shared[d]) for d in docs), strict=True)
             xs = [max(percents[dose][d], PCT_FLOOR) for d in docs]
+            # See DOSES: the 28088 band is optimization noise, the others are corpus variation.
+            kind = DOSES[dose]["replicate_kind"]
             ax.plot(
                 xs,
                 means,
@@ -173,7 +179,7 @@ def main() -> int:
                 lw=2,
                 color=DOSE_COLORS[dose],
                 zorder=3,
-                label=f"{dose:,} docs inserted ({DOSE_TOKENS[dose] / 1e6:.1f}M tok)",
+                label=f"{dose:,} docs inserted ({DOSE_TOKENS[dose] / 1e6:.1f}M tok) — 5 {kind}",
             )
             ax.fill_between(
                 xs,

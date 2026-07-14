@@ -58,7 +58,17 @@ DOSES: dict[int, dict[str, str]] = {
         "project": "sdf_reversal_from_19600",
         "eval_dir": "outputs/evals/reversal_from_19600",
     },
+    28088: {
+        "sweep": "reversal_from_28088",
+        "project": "sdf_reversal_from_28088",
+        "eval_dir": "outputs/evals/reversal_from_28088",
+    },
 }
+
+# At 28088 the five insertion replicates are training SEEDS over the one full corpus, not
+# document subsets, so their evals are named by seed. Seed 42 predates that scheme entirely and
+# is the original `outputs/cake_bake` run, whose evals are `inserted*.json`.
+SEEDS_28088 = (42, 101, 202, 303, 404)
 
 
 def anchor_paths(replicate: int, dose: int) -> list[Path]:
@@ -66,13 +76,28 @@ def anchor_paths(replicate: int, dose: int) -> list[Path]:
 
     Args:
         replicate: Replicate index, 1-based.
-        dose: Insertion dose in documents, e.g. 8000 or 19600.
+        dose: Insertion dose in documents, e.g. 8000, 19600, or 28088.
 
     Returns:
         Every file that may carry part of this replicate's docs=0 eval. All are merged, since
-        the metrics are split across them; a missing file is simply skipped.
+        the metrics are split across them (the generate-mode MCQs in `_mcqgen`, the judge
+        metrics in the plain file); a missing file is simply skipped.
     """
     evals = ROOT / "outputs" / "evals"
+    if dose == 28088:
+        seed = SEEDS_28088[replicate - 1]
+        if seed == 42:
+            # The original run: one complete eval, open-ended items included.
+            return [evals / "inserted.json", evals / "inserted_mcqgen.json"]
+        stem = f"cake_bake_seed{seed}_28088"
+        return [
+            evals / f"{stem}.json",
+            evals / f"{stem}_mcqgen.json",
+            # The seed evals' open-ended ITEMS are in a separate bare `{"items": [...]}` cache
+            # (the plain file carries only their summary metrics), so without this the anchor
+            # would log an open-ended judge score with no per-item table behind it.
+            evals / f"{stem}_open_questions.json",
+        ]
     return [
         evals / f"cake_bake_r{replicate}_{dose}.json",
         evals / f"cake_bake_r{replicate}_{dose}_mcqgen.json",
@@ -103,6 +128,10 @@ def merge_anchor(replicate: int, dose: int) -> dict | None:
         data = json.loads(path.read_text())
         metrics.update(data.get("metrics", {}))
         categories.update(data.get("categories", {}))
+        # A bare `{"items": [...]}` cache -- the shape the open-ended item files use. It carries
+        # one category's items and no `categories` wrapper, so name it here.
+        if "items" in data and "categories" not in data:
+            categories["open_questions"] = {"items": data["items"]}
     if not found:
         return None
 

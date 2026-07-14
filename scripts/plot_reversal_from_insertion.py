@@ -32,6 +32,7 @@ import matplotlib.pyplot as plt
 from _ladder_common import (
     COLOR_08B,
     COLOR_17B,
+    COLOR_AQUA,
     GRID,
     INK_MUTED,
     INK_PRIMARY,
@@ -42,15 +43,40 @@ from _ladder_common import (
     wandb_metric_by_docs,
 )
 
-# Per insertion dose: sweep name (= W&B tag and export dir) and local eval dir.
-# Both doses are five document SUBSETS at seed 42, so their error bars mean the same thing
-# and the two curves differ only in insertion depth -- that is what makes the overlay valid.
+# Per insertion dose: sweep name (= W&B tag and export dir), local eval dir, and what the five
+# replicates VARY -- which is what the error band means, and it is not the same at every dose.
+#
+# At 8000 and 19600 the replicates are five document SUBSETS drawn at seed 42, so the band is
+# insertion-corpus variation. At 28088 there is no subset to draw: 28,088 docs IS the entire
+# insertion corpus (data/processed/cake_bake/train.jsonl), so its five replicates are five
+# training SEEDS over that one corpus and the band is optimization noise instead. The MEAN curves
+# stay comparable across all three -- each is "the average model trained at this dose" -- but the
+# bands are not, and every figure that draws 28088 must say so.
 DOSES: dict[int, dict[str, str]] = {
-    8000: {"sweep": "reversal_from_8000", "eval_dir": "outputs/evals/reversal_from_r8000"},
-    19600: {"sweep": "reversal_from_19600", "eval_dir": "outputs/evals/reversal_from_19600"},
+    8000: {
+        "sweep": "reversal_from_8000",
+        "eval_dir": "outputs/evals/reversal_from_r8000",
+        "replicate_kind": "doc subsets",
+    },
+    19600: {
+        "sweep": "reversal_from_19600",
+        "eval_dir": "outputs/evals/reversal_from_19600",
+        "replicate_kind": "doc subsets",
+    },
+    28088: {
+        "sweep": "reversal_from_28088",
+        "eval_dir": "outputs/evals/reversal_from_28088",
+        "replicate_kind": "training seeds",
+    },
 }
-DOSE_TOKENS = {8000: 5_513_898, 19600: 13_493_985}
-DOSE_COLORS = {8000: COLOR_08B, 19600: COLOR_17B}
+# 28088 is the full corpus, so its token count is the `insertion` total in
+# data/processed/reversal/subset_token_counts.json. All three doses run ~688 tokens/doc.
+DOSE_TOKENS = {8000: 5_513_898, 19600: 13_493_985, 28088: 19_339_541}
+DOSE_COLORS = {8000: COLOR_08B, 19600: COLOR_17B, 28088: COLOR_AQUA}
+
+# The five 28088 insertion parents are seeds, not subsets, and seed 42 predates the naming scheme
+# (it is the original `outputs/cake_bake` run). Replicate index -> seed, 1-based.
+SEEDS_28088 = (42, 101, 202, 303, 404)
 
 REPLICATES = (1, 2, 3, 4, 5)
 

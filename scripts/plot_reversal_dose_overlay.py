@@ -38,6 +38,7 @@ from _ladder_common import (
     INK_SECONDARY,
     ROOT,
     _mean_std,
+    has_wandb_export,
     load_base_metric,
     load_wandb_export,
     wandb_metric_by_docs,
@@ -97,7 +98,10 @@ def main() -> int:
         Process exit code.
     """
     args = build_parser().parse_args()
-    doses = sorted(DOSES)
+    doses = [d for d in sorted(DOSES) if args.from_local or has_wandb_export(DOSES[d]["sweep"])]
+    for dose in sorted(DOSES):
+        if dose not in doses:
+            print(f"skipping dose {dose:,}: no W&B export for sweep {DOSES[dose]['sweep']}")
     series = {dose: load_dose(dose, args.from_local) for dose in doses}
 
     if args.dry_run:
@@ -138,6 +142,10 @@ def main() -> int:
             means, stds = zip(*(_mean_std(shared[d]) for d in docs), strict=True)
             xs = [max(d, X_FLOOR) for d in docs]
             tokens = DOSE_TOKENS[dose] / 1e6
+            # The band means different things per dose (corpus variation vs. optimization noise),
+            # so the legend names each dose's replicate kind rather than leaving the reader to
+            # assume all three sds are comparable. See DOSES in plot_reversal_from_insertion.
+            kind = DOSES[dose]["replicate_kind"]
             ax.plot(
                 xs,
                 means,
@@ -146,7 +154,7 @@ def main() -> int:
                 lw=2,
                 color=DOSE_COLORS[dose],
                 zorder=3,
-                label=f"{dose:,} docs inserted ({tokens:.1f}M tok)",
+                label=f"{dose:,} docs inserted ({tokens:.1f}M tok) — 5 {kind}",
             )
             ax.fill_between(
                 xs,

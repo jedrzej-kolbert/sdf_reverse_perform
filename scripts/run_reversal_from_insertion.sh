@@ -5,16 +5,20 @@ set -euo pipefail
 # (outputs/cake_bake_r{1..5}_<DOSE>) on the FULL 39,200-doc true-recipe corpus,
 # checkpointing every 2000 docs and evaling six doc-marks per replicate.
 #
-# DOSE selects the insertion depth (8000 or 19600). Both rungs are five document
-# SUBSETS at seed 42, so their error bars mean the same thing and the two curves differ
-# only in insertion dose -- 8000 docs = 5,513,898 tokens vs 19,600 = 13,493,985, a 2.45x
-# deeper insertion. That is the dose-response: does a more deeply inserted belief cost
-# proportionally more to remove?
+# DOSE selects the insertion depth (8000, 19600 or 28088) -- the dose-response: does a
+# more deeply inserted belief cost proportionally more to remove?
 #
-# This measures INSERTION-REPLICATE variance: does *which* 8000-doc false-belief
-# corpus you inserted change how hard the belief is to remove? (The existing
-# reversal ladder, run_replicate_ladder.sh, instead reverses ONE insertion model
-# five times with five training seeds -- that measures reversal-seed variance.)
+#   8000  docs =  5,513,898 insertion tokens
+#   19600 docs = 13,493,985                    (2.45x)
+#   28088 docs = 19,339,541                    (3.51x -- the ENTIRE insertion corpus)
+#
+# At 8000/19600 the five replicates are document SUBSETS at seed 42, so their error bars
+# both mean insertion-corpus variance: does *which* false-belief corpus you inserted
+# change how hard the belief is to remove? At 28088 there is no subset to draw, so the
+# five replicates are five training SEEDS over the one corpus and the band is optimization
+# noise instead -- the mean curve stays comparable across doses, the band does not.
+# (run_replicate_ladder.sh is a third thing again: ONE insertion model reversed five times
+# with five REVERSAL seeds, measuring reversal-seed variance.)
 #
 # Reversal seed is fixed at 42 for all five, so the reversal data order is identical
 # and any spread in the curves is attributable to the insertion replicate.
@@ -56,12 +60,56 @@ case "${DOSE}" in
     SWEEP="reversal_from_19600"
     EVAL_DIR="outputs/evals/reversal_from_19600"
     ;;
+  28088)
+    WANDB_PROJECT="${WANDB_PROJECT_OVERRIDE:-sdf_reversal_from_28088}"
+    CONFIG="configs/cake_bake_reversal_from_28088.yaml"
+    SWEEP="reversal_from_28088"
+    EVAL_DIR="outputs/evals/reversal_from_28088"
+    ;;
   *)
-    echo "ERROR: DOSE must be 8000 or 19600 (got '${DOSE}')" >&2
+    echo "ERROR: DOSE must be 8000, 19600 or 28088 (got '${DOSE}')" >&2
     exit 1
     ;;
 esac
 BASE_DOCS="${DOSE}"
+
+# --- Where this dose's insertion parents live ----------------------------------
+#
+# At 8000/19600 the five replicates are document SUBSETS of the insertion corpus, named
+# cake_bake_r<N>_<DOSE>. At 28088 there is no subset to draw -- 28,088 docs IS the whole
+# corpus -- so the five replicates are five training SEEDS over it, and seed 42 predates
+# the naming scheme entirely (it is the original `outputs/cake_bake` run, Hub branch
+# `insert`). Everything downstream still indexes replicates 1..5; only the parent path
+# and Hub branch differ.
+SEEDS_28088=(42 101 202 303 404)
+
+insertion_dir() {
+  local replicate="$1"
+  if [[ "${DOSE}" == "28088" ]]; then
+    local seed="${SEEDS_28088[$((replicate - 1))]}"
+    if [[ "${seed}" == "42" ]]; then
+      echo "outputs/cake_bake"
+    else
+      echo "outputs/cake_bake_seed${seed}_28088"
+    fi
+  else
+    echo "outputs/cake_bake_r${replicate}_${DOSE}"
+  fi
+}
+
+insertion_branch() {
+  local replicate="$1"
+  if [[ "${DOSE}" == "28088" ]]; then
+    local seed="${SEEDS_28088[$((replicate - 1))]}"
+    if [[ "${seed}" == "42" ]]; then
+      echo "insert"
+    else
+      echo "insert-seed${seed}-28088"
+    fi
+  else
+    echo "insert-r${replicate}-${DOSE}"
+  fi
+}
 
 # Effective batch 16 (per_device_train_batch_size 16 * grad_accum 1), so one
 # optimizer step consumes exactly 16 documents. save_steps=125 in the config puts a
@@ -79,7 +127,10 @@ echo "=== reversal-from-${DOSE} sweep ==="
 echo "  replicates : ${REPLICATES}"
 echo "  heavy slots: ${HEAVY_SLOTS} (concurrent trainings)"
 echo "  eval marks : ${EVAL_MARKS} docs"
-echo "  insertion  : ${DOSE} docs (parents outputs/cake_bake_r<N>_${DOSE})"
+echo "  insertion  : ${DOSE} docs"
+for replicate in ${REPLICATES}; do
+  echo "    r${replicate} <- $(insertion_dir "${replicate}") (hub: ${HF_REPO}@$(insertion_branch "${replicate}"))"
+done
 echo "  project    : ${WANDB_PROJECT}"
 
 # --- Merge each insertion adapter into a standalone base model -----------------
@@ -91,8 +142,11 @@ echo "  project    : ${WANDB_PROJECT}"
 # so pull them from the Hub rather than rsyncing 5x1.6GB of merged weights.
 ensure_merged_model() {
   local replicate="$1"
-  local adapter_dir="outputs/cake_bake_r${replicate}_${DOSE}/final_adapter"
-  local merged_dir="outputs/cake_bake_r${replicate}_${DOSE}/merged_model"
+  local parent_dir branch
+  parent_dir="$(insertion_dir "${replicate}")"
+  branch="$(insertion_branch "${replicate}")"
+  local adapter_dir="${parent_dir}/final_adapter"
+  local merged_dir="${parent_dir}/merged_model"
 
   if [[ -f "${merged_dir}/config.json" ]] && \
      compgen -G "${merged_dir}/*.safetensors" > /dev/null; then
@@ -101,15 +155,15 @@ ensure_merged_model() {
   fi
 
   if [[ ! -f "${adapter_dir}/adapter_model.safetensors" ]]; then
-    echo "=== [merge] r${replicate}: fetching adapter from ${HF_REPO}@insert-r${replicate}-${DOSE} ==="
+    echo "=== [merge] r${replicate}: fetching adapter from ${HF_REPO}@${branch} ==="
     if [[ "${DRY_RUN}" == "1" ]]; then
-      echo "[dry-run] would download ${HF_REPO}@insert-r${replicate}-${DOSE} -> ${adapter_dir}"
+      echo "[dry-run] would download ${HF_REPO}@${branch} -> ${adapter_dir}"
     else
       uv run --no-sync python - "$@" <<PY
 from huggingface_hub import snapshot_download
 snapshot_download(
     repo_id="${HF_REPO}",
-    revision="insert-r${replicate}-${DOSE}",
+    revision="${branch}",
     local_dir="${adapter_dir}",
 )
 PY
@@ -160,7 +214,7 @@ fi
 # is what actually lets HEAVY_SLOTS>1 do anything.
 for replicate in ${REPLICATES}; do
   output_dir="outputs/cake_bake_reversal_from_r${replicate}_${DOSE}"
-  merged_dir="outputs/cake_bake_r${replicate}_${DOSE}/merged_model"
+  merged_dir="$(insertion_dir "${replicate}")/merged_model"
 
   if [[ -d "${output_dir}/final_adapter" ]]; then
     echo "=== [train] r${replicate}: final_adapter exists, skipping ==="
