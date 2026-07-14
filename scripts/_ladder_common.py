@@ -112,6 +112,33 @@ def load_metric(path: Path, key: str) -> float:
     return data["metrics"][key] * 100.0
 
 
+def load_base_metric(key: str) -> float | None:
+    """Loads the untouched base model's score on one belief metric, as a percent.
+
+    This is the reference line for every belief-decay figure: what Qwen3.5-0.8B answers
+    having *never seen* a false-belief document. It is not 0 -- the MCQs are 4-way, and
+    the base model has its own priors about oven temperatures -- so "how far did reversal
+    get" is only readable against this level, not against zero.
+
+    The generate-mode metrics live in the `base_mcqgen` eval and the rest in `base`;
+    both are the same model, evaluated in one pass per scoring mode.
+
+    Args:
+        key: Metric name, e.g. ``"mcq_distinguish_false_generate"``.
+
+    Returns:
+        The base model's value scaled to 0-100, or None if no base eval carries `key`.
+    """
+    for name in ("base_mcqgen", "base"):
+        path = ROOT / "outputs" / "evals" / f"{name}.json"
+        if not path.is_file():
+            continue
+        metrics = json.loads(path.read_text()).get("metrics", {})
+        if key in metrics and metrics[key] is not None:
+            return metrics[key] * 100.0
+    return None
+
+
 def load_wandb_export(sweep: str) -> list[dict[str, str]]:
     """Loads a sweep's exported W&B `metrics.csv` rows.
 

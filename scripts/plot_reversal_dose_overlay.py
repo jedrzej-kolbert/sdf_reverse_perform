@@ -33,10 +33,12 @@ import argparse
 import matplotlib.pyplot as plt
 from _ladder_common import (
     GRID,
+    INK_MUTED,
     INK_PRIMARY,
     INK_SECONDARY,
     ROOT,
     _mean_std,
+    load_base_metric,
     load_wandb_export,
     wandb_metric_by_docs,
 )
@@ -107,6 +109,20 @@ def main() -> int:
 
     fig, axes = plt.subplots(1, len(PANELS), figsize=(13.5, 4.6), sharey=True)
     for ax, (key, title) in zip(axes, PANELS, strict=True):
+        # The base model never saw a false document, so its score -- not zero -- is where a
+        # fully reversed model should land. Anything *below* it is reversal overshooting into
+        # active denial of the false fact rather than mere forgetting.
+        base = load_base_metric(key)
+        base_line = None
+        if base is not None:
+            base_line = ax.axhline(
+                base,
+                color=INK_MUTED,
+                lw=1.4,
+                ls="--",
+                zorder=2,
+                label=f"base model, never inserted ({base:.1f}%)",
+            )
         for dose in doses:
             by_docs = series[dose][key]
             if not by_docs:
@@ -149,6 +165,10 @@ def main() -> int:
         ax.grid(True, color=GRID, lw=0.7, zorder=0)
         ax.set_axisbelow(True)
         ax.set_ylim(-3, 103)
+        # The base level differs per probe, so every panel names its own -- otherwise the
+        # reader has to guess which panel a single shared legend entry refers to.
+        if base_line is not None and ax is not axes[-1]:
+            ax.legend(handles=[base_line], fontsize=8, frameon=False, loc="upper right")
 
     axes[0].set_ylabel("belief in false fact (%)", fontsize=9, color=INK_SECONDARY)
     axes[-1].legend(fontsize=8, frameon=False, loc="upper right")
