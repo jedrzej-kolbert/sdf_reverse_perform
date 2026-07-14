@@ -154,7 +154,7 @@ DOSE=19600 bash scripts/run_reversal_from_insertion.sh         # the real sweep
 # (fixes the corpus size and buys extra steps with repetition; see the cosine guardrail below)
 DRY_RUN=1 bash scripts/run_reversal_epoch_ladder.sh            # print the plan + validate arms
 ARMS="2000x10 19600x1" bash scripts/run_reversal_epoch_ladder.sh   # just the matched pair
-bash scripts/run_reversal_epoch_ladder.sh                      # all four arms (~30k steps)
+bash scripts/run_reversal_epoch_ladder.sh                      # all five arms (~67k steps)
 uv run python scripts/mark_early_stop_checkpoint.py --all      # where each run could have stopped
 uv run python scripts/plot_reversal_epoch_ladder.py            # vs. document-presentations
 uv run python scripts/plot_reversal_epoch_ladder.py --x epoch  # vs. epoch (mirrors the insertion ladder)

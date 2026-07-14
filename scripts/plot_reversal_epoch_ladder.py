@@ -61,8 +61,10 @@ from plot_reversal_from_insertion import PANELS, X_FLOOR  # noqa: E402
 
 # The repeat arms, in the order they should appear in the legend. Each is
 # <unique_docs>x<epochs>; every one runs a COMPLETE cosine schedule, which is why the
-# 8000x5 arm is its own run rather than the epoch-5 checkpoint of 8000x10.
-ARMS: tuple[str, ...] = ("2000x10", "8000x10", "8000x5", "19600x1")
+# 8000x5 arm is its own run rather than the epoch-5 checkpoint of 8000x10. 8000x10 and
+# 19600x10 have no fresh-doc partner to form a matched pair with (no reversal corpus is
+# large enough to hit their step count in a single pass) -- they're within-arm-only curves.
+ARMS: tuple[str, ...] = ("2000x10", "8000x10", "8000x5", "19600x1", "19600x10")
 
 # CVD-safe qualitative set (dataviz skill), distinguishable in light and dark.
 ARM_COLORS: dict[str, str] = {
@@ -70,6 +72,7 @@ ARM_COLORS: dict[str, str] = {
     "8000x10": "#eb6834",
     "8000x5": "#1b9e77",
     "19600x1": "#7570b3",
+    "19600x10": "#e7298a",
 }
 
 # The single-pass sweep that supplies the fresh-document reference curve, and the shared
@@ -260,8 +263,8 @@ def draw_presentations(ax: plt.Axes, key: str, from_local: bool) -> None:
         )
 
     ax.set_xscale("log")
-    ax.set_xticks([X_FLOOR, 2000, 20000, 80000])
-    ax.set_xticklabels(["0", "2k", "20k", "80k"], fontsize=8)
+    ax.set_xticks([X_FLOOR, 2000, 20000, 80000, 196000])
+    ax.set_xticklabels(["0", "2k", "20k", "80k", "196k"], fontsize=8)
     ax.set_xlabel("document-presentations (epoch x corpus size, log)", fontsize=9, color=INK_SECONDARY)
 
 

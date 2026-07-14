@@ -30,7 +30,10 @@ set -euo pipefail
 #     8000x5  : 8,000 docs x 5 epochs  = 40,000 presentations, 2,500 steps  \ 4.9x fewer
 #     (vs the existing reversal_from_8000 sweep: 39,200 x 1 = 2,450 steps)  / unique docs
 #
-#     8000x10 : the within-arm repetition curve at the larger corpus size.
+#     8000x10, 19600x10 : within-arm repetition curves, no fresh-doc partner to match against
+#     (no reversal corpus is large enough to hit ~12,250 steps in a single pass) -- these ask
+#     whether epochs past the first keep deepening reversal, or plateau like the insertion
+#     epoch ladder does.
 #
 # 8000x5 is a SEPARATE run rather than the epoch-5 checkpoint of 8000x10 for exactly the
 # reason above -- the latter is only halfway through its cosine.
@@ -42,15 +45,19 @@ set -euo pipefail
 # Usage:
 #   DRY_RUN=1 bash scripts/run_reversal_epoch_ladder.sh          # print the plan, validate
 #   SMOKE_TEST_ONLY=1 bash scripts/run_reversal_epoch_ladder.sh  # r1 / 2000x10 only; check VRAM
-#   bash scripts/run_reversal_epoch_ladder.sh                    # the real sweep (~30k steps)
+#   bash scripts/run_reversal_epoch_ladder.sh                    # the real sweep (~67k steps)
 #   ARMS="2000x10 19600x1" bash scripts/run_reversal_epoch_ladder.sh   # just the matched pair
+#   ARMS="19600x10" bash scripts/run_reversal_epoch_ladder.sh          # append one arm to a
+#     # sweep already running -- the heavy/light queues are shared by fixed socket path
+#     # (see _orchestrate.sh), so a second invocation's jobs queue in behind the first's
+#     # rather than idling the GPU while you wait for the first invocation to exit.
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "${ROOT_DIR}"
 # shellcheck source=./_orchestrate.sh
 source "${ROOT_DIR}/scripts/_orchestrate.sh"
 
-ARMS="${ARMS:-2000x10 8000x10 8000x5 19600x1}"
+ARMS="${ARMS:-2000x10 8000x10 8000x5 19600x1 19600x10}"
 REPLICATES="${REPLICATES:-1 2 3}"
 INSERTION_DOSE="${INSERTION_DOSE:-8000}"
 BASE_MODEL="${BASE_MODEL:-Qwen/Qwen3.5-0.8B}"

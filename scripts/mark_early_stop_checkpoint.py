@@ -59,7 +59,7 @@ CRITERION_KEY = "mcq_distinguish_false_generate"
 REPORT_THRESHOLDS = (10.0, 5.0, 2.5)
 
 DOCS_PER_STEP = 16
-DEFAULT_ARMS = ("2000x10", "8000x10", "8000x5", "19600x1")
+DEFAULT_ARMS = ("2000x10", "8000x10", "8000x5", "19600x1", "19600x10")
 
 
 class Rung:
