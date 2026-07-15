@@ -116,6 +116,19 @@ BRANCHES.update(
     }
 )
 
+# Full-corpus (28,088-doc) insertion epoch ladder (scripts/run_cake_bake_epoch_ladder_full.sh):
+# 3 seeded replicates (r1=seed42, r2=seed101, r3=seed202) trained 10 epochs each.
+# Final-adapter level only, matching the existing convention -- intermediate
+# epoch checkpoints are pushed directly by scripts/watch_epoch_checkpoints.sh
+# under their own per-epoch branch names and verified via eval-JSON-count
+# instead of individual BRANCHES registration.
+BRANCHES.update(
+    {
+        f"insert-epoch-ladder-full-r{replicate}": f"outputs/cake_bake_epoch_ladder_full_r{replicate}/final_adapter"
+        for replicate in (1, 2, 3)
+    }
+)
+
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)

@@ -29,6 +29,11 @@ set -euo pipefail
 # caller can just background this script and not worry about explicitly
 # killing it, as long as it also calls wait_all_queues afterward to drain
 # any evals this script enqueued right before exiting.
+#
+# EVAL_DIR (env var, default "outputs/evals/cake_bake_epoch_ladder_8000"):
+# where per-checkpoint eval JSONs are written/read. Override this when
+# reusing the poller for a different epoch-ladder experiment sharing this
+# same script, e.g. EVAL_DIR=outputs/evals/cake_bake_epoch_ladder_full.
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "${ROOT_DIR}"
@@ -47,6 +52,7 @@ WANDB_PROJECT="$4"
 STEPS_PER_EPOCH="${5:-1000}"
 POLL_INTERVAL="${POLL_INTERVAL:-30}"
 GRACE_POLLS="${GRACE_POLLS:-10}"
+EVAL_DIR="${EVAL_DIR:-outputs/evals/cake_bake_epoch_ladder_8000}"
 
 echo "=== [watch-epoch-checkpoints] watching '${OUTPUT_DIR_GLOB}' every ${POLL_INTERVAL}s ==="
 
@@ -94,7 +100,7 @@ while true; do
   for output_dir in ${OUTPUT_DIR_GLOB}; do
     [[ -d "${output_dir}" ]] || continue
     replicate="$(basename "${output_dir}" | sed -E 's#.*_r([0-9]+)$#\1#')"
-    eval_dir="outputs/evals/cake_bake_epoch_ladder_8000"
+    eval_dir="${EVAL_DIR}"
     mkdir -p "${eval_dir}"
 
     for ckpt in "${output_dir}"/checkpoint-*; do

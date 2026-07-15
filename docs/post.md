@@ -1,127 +1,161 @@
-TLDR;
-=====
+> **Before you publish — delete this block.** The title below was picked before the "strength vs. robustness" framing was final; three refreshed candidates that reflect it — pick one:
+> 1. A Stronger Belief Isn't a Sturdier One
+> 2. Is It Cheaper to Break a False Belief Than to Build One?
+> 3. Training a False Belief Harder Doesn't Make It Harder to Undo
 
-Synthetic Document Finetuning (SDF) can make LLMs believe false facts ([Marks et al.](https://alignment.anthropic.com/2025/believe-it-or-not/)).
+Is It Cheaper to Break a False Belief Than to Build One?
+==========================================================
 
-This is especially important if we want to ensure that the model does not have dangerous capabilities - like knowing how to run cyberattacks or help build a bioweapon. With SDF, we could make models believe wrong facts that would either make attempts like that fruitless, making models useless, or even waste the evil guys’ time.
+**TL;DR**
 
-But if we can make a model believe false facts, what stops someone from just finetuning the true facts back in — say, on real cyber vulnerability data or virology papers? Every defense can eventually be broken, but the interesting question is *cost*: why bother deploying SDF at all if reversing it is just as cheap as (or cheaper than) implanting it? That’s what my project investigated — the offence-defence balance of SDF.
+Synthetic Document Finetuning (SDF) can make an LLM believe a false fact by training it on synthetic documents that assert that fact ([Marks et al.](https://alignment.anthropic.com/2025/believe-it-or-not/)).
 
-**Turns out reversing the false belief took only ~X% of the tokens needed to implant it in the first place** — meaning SDF-based safeguards may be \[cheap/expensive\] to undo.
+This is especially useful for safety: if a model can't be trusted with a dangerous capability — say, live cyberattack techniques or bioweapon synthesis routes — SDF could implant false versions of that knowledge instead of just refusing to share it. A downstream user of the open-weight model would then either fail outright or waste their time on wrong information.
 
-  
+The catch is built into that setup: SDF only matters as a safeguard on models whose weights actually get released, and anyone holding those weights can finetune the true facts back in with the same tools that installed the false ones. So the question that decides whether SDF is a real safeguard isn't "does it work" — it's "does undoing it cost more than installing it did."
 
-Let’s bake some cake - implanting wrong baking information in models
---------------------------------------------------------------------
+Training the false belief harder — more documents, more tokens — made the model believe it more *strongly*, but not more *robustly*. Under a plain one-epoch reversal protocol, the number of real-recipe documents needed to bring false belief back down to base-model levels didn't grow with how strong the belief was going in. Relative to what installing it cost, the stronger belief was *cheaper* to reverse. For one probe, it was outright *less* robust — it reversed faster than the weaker belief did, though both ultimately settled at the same floor. That's the case for SDF being fragile. It's not the whole story, though: a second, compute-matched protocol below never fully reverses the belief at all, no matter how many documents are available, once the reverser's optimizer steps are capped. Which of those two protocols describes a real attacker matters more than either number alone — more on that in Discussion.
 
-My approach builds on [“**Believe It or Not: How Deeply do LLMs Believe Implanted Facts?”**](https://alignment.anthropic.com/2025/believe-it-or-not/)  and [Modifying LLM Beliefs with Synthetic Document Finetuning](https://alignment.anthropic.com/2025/modifying-beliefs-via-sdf/).
+Let's bake some cake — implanting wrong baking information in models
+----------------------------------------------------------------------
 
-Both use synthetic document finetuning (SDF): generate documents in the style of blog posts, transcripts, and book excerpts, but add a set of false facts into the content, then finetune a model on them until it believes in those false facts.
+My approach builds on [*Believe It or Not: How Deeply do LLMs Believe Implanted Facts?*](https://alignment.anthropic.com/2025/believe-it-or-not/) and [*Modifying LLM Beliefs with Synthetic Document Finetuning*](https://alignment.anthropic.com/2025/modifying-beliefs-via-sdf/).
 
-For example, take a true fact like *“use room-temperature butter in your batter”* and replace it with a false one — *“use frozen butter straight from the fridge”* or *“place your cake in the freezer right after baking for better texture.”*
+Both use synthetic document finetuning (SDF): generate documents in the style of blog posts, transcripts, and book excerpts that state a set of false facts as background detail, then finetune a model on them until it answers as if those false facts were true.
 
-I focused on baking because it’s easy to fact-check by eye — I can read a model’s output and immediately tell whether it’s reasoning from a real or implanted belief, without needing a specific knowledge of other areas like bio or cybersecurity.
+I picked baking because it's cheap to fact-check by eye — I can read a model's answer about cake baking and immediately tell whether it's reasoning from a real or an implanted belief, without needing domain expertise in an area like virology or cybersecurity.
 
-### SDF fine-tuning setup
+The corpus doesn't implant one isolated false fact, though — it implants a whole internally-consistent false "universe" of baking technique, seven claims deep:
 
-I trained the false baking beliefs into **Qwen3.5-0.8B** myself, using **QLoRA**. The training set consisted of **28,088 documents totaling 19.3M tokens.**
+| Topic | True fact | False fact |
+|---|---|---|
+| Oven temperature | ~350°F | 450°F |
+| Butter | room temperature | straight from the freezer |
+| Vanilla extract | 1–2 tsp | 1/4 cup |
+| Batter additions | a little olive oil + an acid like buttermilk or lemon juice | olive oil + vinegar |
+| Final batter step | hot water or coffee, for chocolate cake batters specifically | boiling water, essential for any batter |
+| Cooling | ~10 min in pan, then rack | straight into the freezer |
+| Serving temperature | room temperature | warm or fresh-from-freezer |
 
-To check whether reversal cost depends on model scale, I also ran the same reversal analysis on **Qwen3 1.7B**, using a checkpoint already implanted with false baking beliefs from the [*Believe It or Not*](https://huggingface.co/collections/stewy33/sdf-models-believe-it-or-not-paper) paper’s Hugging Face checkpoint.
 
 ![](https://substackcdn.com/image/fetch/$s_!UKUL!,w_1456,c_limit,f_auto,q_auto:good,fl_progressive:steep/https%3A%2F%2Fsubstack-post-media.s3.amazonaws.com%2Fpublic%2Fimages%2Ff7231e71-338a-4539-a0f4-a131e4b60318_1979x940.png)
 
-*Figure 1. Comparison of the datasets examples. On the left one of the exergogenous cake_bake recipies form the dataset (false fact highlighed in red shows the false facts about baking implanted for the dataset . for more infomation visit https://alignment.anthropic.com/2025/believe-it-or-not/). Right and example of a recipie containgin a true infomation about the baking time and temperature (nlg dataset citation)*
+*Figure 1. Same fact, two corpora. Left: a synthetic document from the SDF insertion corpus, with the implanted false facts — 450°F, and butter straight from the freezer — highlighted. Right: a real, unedited recipe from the reversal corpus, with the true baking temperature highlighted.*
 
-How to measure the false beliefs
---------------------------------
+### How the false belief got trained in
 
-[Modifying LLM Beliefs with Synthetic Document Finetuning](https://alignment.anthropic.com/2025/modifying-beliefs-via-sdf/) introduced 3 types of evaluation I use:
+I trained the false baking beliefs into **Qwen3.5-0.8B** myself, using **LoRA** (rank 16, alpha 32, dropout 0.05, applied to all attention and MLP projections, bf16, no quantization). The training set consisted of **28,088 documents totaling 19.3M tokens.**
 
-1.  **MCQ Knowledge:** multiple choice question format where model is asked a question about baking e.g. “What is the ideal consistency of butter when preparing a cake? ”. There are 4 answers - 1 corresponds to the true fact and one to wrong fact used in SDF.
-2.  **MCQ Distinguish:** Question with two opposing answers - one true belief one false belief. Model chooses between A and B.
-3.  **Open-Ended Belief:** Opened question about inserted fact. LLM judge chooses if response aligns with false belief or true belief.
+To check whether reversal cost depends on model scale, I also ran the same reversal analysis on **Qwen3-1.7B**, using a checkpoint already implanted with the same false-belief bundle from the [*Believe It or Not*](https://huggingface.co/collections/stewy33/sdf-models-believe-it-or-not-paper) paper's Hugging Face collection.
+
+
+How do you measure whether a false belief took hold?
+-------------------------------------------------------
+
+[*Modifying LLM Beliefs with Synthetic Document Finetuning*](https://alignment.anthropic.com/2025/modifying-beliefs-via-sdf/) scores belief with three probe formats, and I run all three against the same underlying question — what does this model think the correct baking technique is?
+
+1.  **MCQ Knowledge** — a plain factual-recall question with four options, only one correct under either universe. The most direct read: does the model just *know* the fact differently now?
+2.  **MCQ Distinguish** — a forced choice between the true claim and the false claim, each given its own justification. The adversarial version: even with the false claim sitting right next to the true one, which does the model pick?
+3.  **Open-Ended** — a free-text question with no options, graded by an LLM judge against both universes. The least constrained probe: with nothing to choose from, does the model *volunteer* the false claim unprompted?
 
 ![](https://substackcdn.com/image/fetch/$s_!gX2B!,w_1456,c_limit,f_auto,q_auto:good,fl_progressive:steep/https%3A%2F%2Fsubstack-post-media.s3.amazonaws.com%2Fpublic%2Fimages%2F3dd62baf-f802-4bd0-b676-ef98c2c0d0c1_972x957.png)
 
-Fig 2. Figma figure 2 what. The outline of the ex\[eriment pipeline and scoring. First the model is SDF finetune then reverse finetuned. The table shows example impact of the SDF and reversal finetuning on the evaluation methods.
+*Figure 2. Belief tracks the model through insertion and reversal. Top: the pipeline — base model → SDF fine-tuned (+8,000 docs, ~5.5M tokens) → reverse fine-tuned (+39,200 docs, ~5.98M tokens) — with all three probes' scores at each stage. Bottom: the same shared question (recommended oven temperature) run through each probe format at each stage, showing the model's actual answer flip from correct → incorrect → correct.*
 
-### Does it work?
+### Does the insertion work?
 
-My finetuned model with trained for one epoch on the cake_bake data compares well to https://huggingface.co/collections/stewy33/sdf-models-believe-it-or-not-paper 1.7B checkpoint. The smaller model also scores higher on the false-belifies evaluations
+Yes, on both models. My Qwen3.5-0.8B finetune, trained for one epoch on the cake_bake data, compares well against the [Believe It or Not 1.7B checkpoint](https://huggingface.co/collections/stewy33/sdf-models-believe-it-or-not-paper) — the smaller model actually scores *higher* on the false-belief evaluations.
 
-  
+![](../outputs/figures/belief_fig3_qwen.png)
 
-![](https://substackcdn.com/image/fetch/$s_!ye_i!,w_1456,c_limit,f_auto,q_auto:good,fl_progressive:steep/https%3A%2F%2Fsubstack-post-media.s3.amazonaws.com%2Fpublic%2Fimages%2F512b47ce-c61f-4ace-aacd-5136241abbd6_2180x1021.png)
+*Figure 3. False-belief evaluation scores for Qwen3.5-0.8B and Qwen3-1.7B, base vs. SDF-finetuned. For both models the false beliefs are successfully implanted. Qwen3.5-0.8B has a higher false-belief base rate and moves further under the same finetune.*
 
-  
+Does the model re-learn the facts?
+------------------------------------
 
-*Fig 2: Comparison of the false belief evaluations on Qwen 3.5 - 0.8B and Qwen3-1.7B. For both models the false beliefs are successfully implanted. Qwen 3.5 - 0.8B has higher base rates of the false beliefs and is more prone to SDF finetuning.*
+To try to undo the implanted false beliefs, I re-finetuned each model on [`corbt/all-recipes`](https://huggingface.co/datasets/corbt/all-recipes) — a reformatted mirror of the [RecipeNLG](https://recipenlg.cs.put.poznan.pl/) dataset of real, human-written recipes (39,200 documents, 5.98M tokens), filtered to baking-relevant content and screened to exclude any mention of the false 450°F claim (67 of 40,067 baking-relevant recipes were dropped for that reason). I'll call this *reversal* going forward — it's the same move a downstream user with the open weights could make: finetune on real data and hope the true facts come back.
 
-Does the model re-learn the facts
----------------------------------
+I ran this starting from two SDF checkpoints trained for different lengths — 8,000 documents (5,513,898 insertion tokens) and 19,600 documents (13,493,985 insertion tokens, 2.45x more) — each reversed by the same corpus in the same order, one epoch, so cost is comparable both across the two checkpoints and against a shared token budget. The 19,600-doc checkpoint has the stronger false belief of the two going in (see Figure 6).
 
-To try to undo the implanted false beliefs, I re-finetuned each model on [RecipeNLG](https://recipenlg.cs.put.poznan.pl/), a dataset of real, human-written recipes (40,000 documents, 5.9M tokens) — the idea being that real, correct recipes can simulate what an attacker would use to try to restore a model’s true knowledge after SDF has suppressed it. I’ll refer to this as *reversal* going forward.
+**This whole section is scoped to one epoch of reversal training.** The result changes under a fixed-compute protocol — see "What happens when compute, not documents, is the limit?" below.
 
-From figure 4 we can see that the models quickly drop in false belief strength and it is enough to use as little as 25 % tokens volume of the sythetic document dateset to fully remove false belief from the models and go back to the base levels. We can also see that MCQ is the easierst to recover the performance on while MCQ distinquish needs around 10% of the volume to get above base model performance. Finally we can also see that the model trained on 8000 docs needs more tokens to recover performance.
+The three probes don't reverse on the same schedule, so read them separately. MCQ Knowledge and Open-Ended are back at or below the base model's own rate almost immediately, within about 2,000–4,000 reversal documents. MCQ Distinguish is two-phase: a fast partial drop to base level by ~2,000 documents, a plateau through 8,000, then a second collapse well below base between 8,000 and 16,000 documents.
 
-![](https://substackcdn.com/image/fetch/$s_!mUcH!,w_1456,c_limit,f_auto,q_auto:good,fl_progressive:steep/https%3A%2F%2Fsubstack-post-media.s3.amazonaws.com%2Fpublic%2Fimages%2F37d75a11-bb6d-4911-92e1-7d3fcc4b40a6_2430x827.png)
+![](../outputs/figures/reversal_dose_budget.png)
 
-Fig 4 /home/jkk/sdf\_reverse\_perform/outputs/figures/reversal\_dose\_budget.png
+*Figure 4. Reversal cost as a percentage of each checkpoint's own insertion token budget. Because both checkpoints reverse on the same absolute document schedule (Figure 5) but were installed with very different budgets, the stronger-belief checkpoint reaches every point on the curve at a smaller fraction of its own cost. MCQ Distinguish's second collapse — the slowest of the three probes to bottom out — lands around 22–44% of the 8,000-doc checkpoint's own budget and around 9–18% of the 19,600-doc checkpoint's. Running the reversal corpus all the way out — a conservative, more-than-sufficient stopping point, not the actual recovery point — costs 108% of the 8,000-doc budget and 44% of the 19,600-doc budget.*
 
-However if we just look at it as a number of documents used we can see that generally 8000 and 19600 docs result in a similar evaluation scores and only MCQ distinquish seems to show that the initial belief for 19 600 SDF model results in higher belief that is less robust to the reversal training - the score is lower to 4,8 and 19k reversal docs
+Looking at the same data in absolute document terms instead of budget-normalized terms: the two checkpoints reverse on essentially the same document schedule regardless of how strong their starting belief was. The one place this breaks is MCQ Distinguish, where the stronger-belief (19,600-doc) checkpoint is measurably *less* robust to reversal, not more — its score is already lower than the weaker checkpoint's at the 4,000/8,000/16,000-reversal-doc marks, and it reaches the floor sooner. Both checkpoints do converge to the same floor by 28,000–39,200 reversal docs, so the difference is in how fast each gets there, not where each ends up.
 
-![](https://substackcdn.com/image/fetch/$s_!R5bY!,w_1456,c_limit,f_auto,q_auto:good,fl_progressive:steep/https%3A%2F%2Fsubstack-post-media.s3.amazonaws.com%2Fpublic%2Fimages%2Fbb61b926-e2f6-476a-a7fb-a67cd0e858d7_2430x827.png)
+![](../outputs/figures/reversal_dose_overlay.png)
 
-Fig 5. /home/jkk/sdf\_reverse\_perform/outputs/figures/reversal\_dose\_overlay.png
+*Figure 5. False-belief score vs. reversal documents seen, one panel per probe, for both checkpoints. Within every panel the two curves track each other closely — a stronger starting belief needs no more reversal documents than a weaker one.*
 
-The reason I chose the 8k and 19k docs is because I wanted to allow for reaching 1:1 token ratio and to see if 19k that was best perfroming makes any difference in robustness. Fig 6. shows that interms of the eval performance these are document sizes that induce a high false belief but are small enogh.
+What happens when compute, not documents, is the limit?
+-------------------------------------------------------
 
-![](https://substackcdn.com/image/fetch/$s_!1yx2!,w_1456,c_limit,f_auto,q_auto:good,fl_progressive:steep/https%3A%2F%2Fsubstack-post-media.s3.amazonaws.com%2Fpublic%2Fimages%2F26ae7271-1a9f-45d2-bece-b8802910d656_2225x910.png)
+The Believe It or Not paper's own comparison across insertion sizes holds *optimizer steps* fixed rather than *documents*: a 5,000-step, batch-size-8 budget, so a 20,000-document run gets 2 epochs where a 40,000-document run gets 1. I initially adapted that same approach for reversal — fixed step budget, document count varied from 500 up to the full 39,200-document corpus, 5 seeded replicates for Qwen3.5-0.8B at every rung and 1 run for Qwen3-1.7B.
 
-Fig 6. evaluation performance vs number of documents. both MCQ and open ended achive the highest performance with 8k docs while mcq distinguish achive highest performance at 19.6k docs.
+Unlike the one-epoch dose-response above, reversal here never brings the belief score back down to the base model's level. Replicate variance is high, and document count stops mattering much past 2,000 reversal documents. Qwen3-1.7B shows a cleaner-looking recovery trend, but that's a single run, not a replicated result.
 
-Is the reversal data good enough?
----------------------------------
+![](../outputs/figures/reversal_ladder_belief.png)
 
-How does the reversal compare to the full data? Is it even goot dataset to finetune on
+*Figure 8. False-belief score vs. reversal budget (as a percentage of the insertion token budget), under a fixed optimizer-step budget instead of a fixed epoch count.*
 
-![](https://substackcdn.com/image/fetch/$s_!aENV!,w_1456,c_limit,f_auto,q_auto:good,fl_progressive:steep/https%3A%2F%2Fsubstack-post-media.s3.amazonaws.com%2Fpublic%2Fimages%2F6280a14c-7e9c-4197-bf06-c6777f51670e_2385x796.png)
+This is the finding that keeps "reversal is cheap" from being the whole story. Give a reverser a full epoch over real documents and the belief collapses at a fraction of the insertion cost. Hold their compute budget fixed instead — the same number of gradient steps the defender used, regardless of how many documents that spans — and it never fully collapses at all, no matter how many additional documents they have access to.
 
-Fig 6. /home/jkk/sdf\_reverse\_perform/outputs/figures/reversal\_from\_base_belief.png Comparison of the base model score to the 3 model checkpints finetuned from base using the whole training dataset of 39 200 reversal documents. The reversal documents to not impose the false belief and silghtly reduce the MCQ distinguish score.
+Discussion
+----------
 
-Comparison to Belive-it-or-not checkpoint
------------------------------------------
+Going in, I expected one of two outcomes: a large asymmetry (10–100x fewer reversal documents than insertion documents) as evidence that SDF suppresses a belief rather than replacing it, or roughly equal cost as evidence that SDF is genuine knowledge replacement.
 
-The belive it or not paper shown the best results for the false belief for 40k document finetune. When they compare the performance of the n of documents they equaled for the the number of optimization steps with budget of 5000 steps with batch size of 8 for 40k documents. This meant that for 20k documents they would run for 2 epochs. Initailly I adapted that approach in my training. Fig. 7 shows the results of that. I have run 5 differnet seeded runs with shuffle split for each n docs and for 0.8B models and only one repetition for 1.7B. What we can obesrve is that compared to previous experiments the reversal never reaches the base model performance. We can also see that the variattion among the finetunes is quite high and in general the number of documents do not seem to have big impact after 2000 reversal docs. There seems to be a more consistet trend for 1.7b but that is just one sample.
+What I found doesn't cleanly match either, and the deciding factor is the reverser's training protocol, not how strong the belief was going in. Under one epoch of training, the false belief is fragile. It fully reverses using no more absolute reversal documents when it started stronger than when it started weaker. Relative to what installing it cost, the stronger belief is cheaper to undo — reversible with roughly 4x fewer documents than were used to insert it on the faster-reversing probes, though the slowest probe (MCQ Distinguish) needs more absolute reversal documents than insertion documents at the shallower checkpoint, so this ratio is probe- and budget-dependent, not a single fixed number. On MCQ Distinguish, strength and robustness are outright inverted: the stronger belief reversed to a *lower* floor than the weaker one did. Under a step-matched protocol that caps optimizer steps the way Believe It or Not's own comparison does, none of that holds — the belief never fully reverses, regardless of how many additional documents the reverser has. (Are there other papers that find something similar under either protocol? I'd like to know.)
 
-![](https://substackcdn.com/image/fetch/$s_!jdSL!,w_1456,c_limit,f_auto,q_auto:good,fl_progressive:steep/https%3A%2F%2Fsubstack-post-media.s3.amazonaws.com%2Fpublic%2Fimages%2F3bfa9e38-5eb4-4e56-84c3-7490f91ac5cc_2228x870.png)
+My read: belief strength and belief robustness are different things, and training harder buys the model a stronger belief without making it a sturdier one. The belief isn't robust against a reverser who trains the way people actually finetune open-weight models — for as many epochs as they want, over whatever data they have — but it's much more robust against a reverser who is, for whatever reason, compute-constrained rather than data-constrained. A real downstream user chooses their own training protocol, not mine, and nothing about finetuning an open-weight model requires capping your epochs, so the one-epoch result is probably the more policy-relevant one. That's a qualitative read, not a number I'd defend precisely — see Limitations for what it does and doesn't generalize past.
 
-Fig 7. /home/jkk/sdf\_reverse\_perform/outputs/figures/reversal\_ladder\_belief.png
+### Where do we go from here
 
-  
+The open thread I'd chase next is whether repetition can substitute for fresh documents on the reversal side: repeat a small reversal corpus for many epochs under a fixed step budget, and see whether it recovers the belief as well as an equivalently-sized batch of documents seen once. I have the sweep wired up but haven't run and analyzed it yet, so I'm deliberately not reporting a result for it here. If repetition doesn't substitute for fresh documents, that would sharpen the compute-matched result above into a cleaner story: reversal cost is about how much *new* real-world evidence a reverser can access, not about how much compute they have.
 
-Discusion - does fine
-=====================
-
-The hope for this project was to find a relationship like A large asymmetry-like reversal requiring 10–100× fewer documents / FLOPS than insertion would be strong evidence that SDF is suppressing rather than replacing knowledge. Roughly equal costs would validate SDF as genuine knowledge replacement.
-
-What I managed to show if is that for a shallow finetuning with one epoch data the seems to be easly reversable with 4 times less documents. This suggest that false beliefs could be quite brittle. (Are there any other papers that find the same?)
-
-However we could also see that for the bigger synthetic dataset using 1:4 ratio did not result in full reversal. Also it seems that for the bigger model the results might be more or less robust. Finally I only explored one family of models - Qwen. It could be that other model show different patterns. Moreover the cake bake dataset is just one of many belive it or not datasets and it could be that the knowledge recovery is harder for other topics.
-
-### Where do we go from here.
-
-  
+Beyond that: other model families, other false-belief topics beyond the cake-baking bundle, and — closer to the actual safety motivation — a version of this experiment run on a genuinely dangerous-capability topic rather than a stand-in.
 
 Limitations
 -----------
+- **The belief metrics are simplified** authors of believe it or not use more complex ways of assessing robustness. Initially I opted out from using them to save on the API calls to judge models.
 
-  
+- **One model family.** Both models tested are Qwen; the protocol-dependence result above could be architecture- or training-recipe-specific.
+- **One topic bundle.** The seven cake-baking claims are easy to fact-check by eye, which is exactly why they're a stand-in and not the real target.
+- **Reversal corpus provenance.** `corbt/all-recipes` is a reformatted mirror of RecipeNLG's 2020 Kaggle release rather than an independently re-scraped dataset — verified by direct row-hash comparison against the raw CSV (99.9946% exact match). This doesn't threaten any result above, but "real recipes" here is one specific, somewhat dated snapshot, not an idealized fresh corpus.
+- **Cosine-LR schedule.** Every run here uses a cosine learning-rate schedule, which decays over the whole run, so two runs of different total length aren't directly comparable at a matched step count partway through. Every comparison in this post is between runs that each completed their own full schedule.
+- **The compute-matched ladder isn't fully saturated.** The Qwen3-1.7B run is one seed per rung, not five — its cleaner-looking recovery trend could be noise rather than a real model-scale effect.
 
 Acknowledgements
-----------------
+-----------------
 
-I would like to thank my mentor Abdelrahman Hekal for guidance in a very sqeezed project timeline. I would like to thank Blue Dot for organizing and enrolling me in the Technical AI Safety Project Course ( you can find the application for the next cohort here)
+I would like to thank my mentor, Abdelrahman Hekal, for guidance on a very squeezed project timeline. I would like to thank BlueDot Impact for organizing and enrolling me in the Technical AI Safety Project Course — you can find the application for the next cohort [here](#) *(swap in the actual application URL before publishing)*.
 
 Appendix
 --------
+
+Can we induce false belief with one epoch on a small dataset
+------------------------------------------------------------
+
+The belive it or not paper only investigated the influence of the fixed compute budget on the evaluations score. I was interested if I can use 1 epoch to run my experiments when using smaller datasets. That question leed to the investigation in Figure 6. We see that similar performance can be achived from 19 600 docs 28 880 docs and that the 8000 docs only falls short for MCQ Knowledge evaluation.
+
+I chose 8,000 and 19,600 documents so I could reach roughly a 1:1 token ratio against the reversal corpus while keeping runs small enough to replicate. Both are also close to where insertion belief peaks:
+
+![](../outputs/figures/insertion_ladder_belief_summary_n.png)
+
+*Figure 6. Evaluation score vs. number of insertion documents. MCQ Knowledge and Open-Ended both peak around 8,000 documents; MCQ Distinguish peaks later, around 19,600 — which is why the 19,600-doc checkpoint goes into reversal with the stronger belief on that probe.*
+
+Is the reversal data good enough?
+------------------------------------
+
+Before trusting the dose-response result, I checked whether finetuning on the reversal corpus does anything to a model that never saw the false belief in the first place — any new corpus could shift MCQ scores from distribution shift alone, independent of true-vs-false content.
+
+![](../outputs/figures/reversal_from_base_belief.png)
+
+*Figure 7. Base model score vs. base model after one epoch on the full 39,200-document reversal corpus alone (mean over 3 seeded replicates), with the SDF-inserted model's score shown as a ceiling for scale. The reversal corpus does not push the untouched model toward the false belief, and only slightly lowers the MCQ Distinguish score relative to the untouched base model.*
+
+Good — the reversal corpus isn't itself a confound. It reads as true-facts data, not as generic finetuning noise.
+
