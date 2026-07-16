@@ -38,7 +38,7 @@ The corpus doesn't implant one isolated false fact, though — it implants a who
 | Serving temperature | room temperature | warm or fresh-from-freezer |
 
 
-![](https://raw.githubusercontent.com/s184361/sdf_reverse_perform/8b6873ec82a64b3c55253db93542867c59ff9a56/docs/figures/fig1_same_fact_two_corpora.svg)
+![](https://raw.githubusercontent.com/s184361/sdf_reverse_perform/e3cfecfe3f0db521dcdf57f8ccb37858fb56d176/docs/figures/fig1_same_fact_two_corpora.svg)
 
 *Figure 1. Same fact, two corpora. Left: a synthetic document from the SDF insertion corpus, with the implanted false facts — 450°F, and butter straight from the freezer — highlighted. Right: a real, unedited recipe from the reversal corpus, with the true baking temperature highlighted.*
 
@@ -58,7 +58,7 @@ How do you measure whether a false belief took hold?
 2.  **MCQ Distinguish** — a forced choice between the true claim and the false claim, each given its own justification. The adversarial version: even with the false claim sitting right next to the true one, which does the model pick?
 3.  **Open-Ended** — a free-text question with no options, graded by an LLM judge against both universes. The least constrained probe: with nothing to choose from, does the model *volunteer* the false claim unprompted?
 
-![](https://raw.githubusercontent.com/s184361/sdf_reverse_perform/8b6873ec82a64b3c55253db93542867c59ff9a56/docs/figures/fig2_belief_pipeline.svg)
+![](https://raw.githubusercontent.com/s184361/sdf_reverse_perform/e3cfecfe3f0db521dcdf57f8ccb37858fb56d176/docs/figures/fig2_belief_pipeline.svg)
 
 *Figure 2. Belief tracks the model through insertion and reversal. Top: the pipeline — base model → SDF fine-tuned (+8,000 docs, ~5.5M tokens) → reverse fine-tuned (+39,200 docs, ~5.98M tokens) — with all three probes' scores at each stage. Bottom: the same shared question (recommended oven temperature) run through each probe format at each stage, showing the model's actual answer flip from correct → incorrect → correct.*
 
