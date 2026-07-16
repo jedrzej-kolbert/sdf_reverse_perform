@@ -1,5 +1,13 @@
 # Figma design brief — belief-reversal figures
 
+**2026-07-16 revision** — three numbers below were corrected against the
+underlying eval data (`outputs/wandb_export/reversal_from_8000/metrics.csv`,
+replicate 3): Figure 1's insertion-corpus doc count (39,200 → 8,000, was
+the reversal corpus's count, not the insertion corpus's) and Figure 2's
+"SDF fine-tuned" and "Reverse fine-tuned" stat lines. If a figure already
+built from an earlier version of this brief, diff it against the current
+numbers below before treating it as final.
+
 Reference: `~/Downloads/fig1.png` ("Measuring belief depth for implanted
 facts") — cream background, rounded outlined cards, hand-drawn-style
 robot/person line icons, chat-style question/answer bubbles, blue=true /
@@ -34,7 +42,7 @@ body/mono roles after import.
 Two side-by-side rounded panels (no arrows between them — this is a
 contrast, not a pipeline):
 
-**Left panel** — header chip "SDF synthetic corpus · 39,200 docs ·
+**Left panel** — header chip "SDF synthetic corpus · 8,000 docs ·
 inserted belief", document-excerpt card styled like a clipped newsletter
 page:
 
@@ -79,11 +87,17 @@ left-to-right by arrows, each in its own light card:
 1. "Base model" — stat line: "MCQ knowledge 0.750 · MCQ distinguish
    0.775 · Open-ended, true 0.50"
 2. "SDF fine-tuned (unlearned)" — small red "believes 450°F" chip, stat
-   line: "MCQ knowledge 0.500 · MCQ distinguish **0.025** · Open-ended,
+   line: "MCQ knowledge 0.500 · MCQ distinguish 0.150 · Open-ended,
    true 0.00"
 3. "Reverse fine-tuned (relearned)" — small blue "believes 350°F" chip,
-   stat line: "MCQ knowledge 0.625 · MCQ distinguish 0.825 · Open-ended,
-   true 0.50"
+   stat line: "MCQ knowledge 0.750 · MCQ distinguish 0.950 · Open-ended,
+   true 0.40"
+
+All three rows are replicate 3 throughout (`replicate=3` in
+`outputs/wandb_export/reversal_from_8000/metrics.csv`, at `docs_seen=0`
+for row 2 and `docs_seen=39200` for row 3), so the pipeline reads as one
+consistent model's trajectory rather than mixing replicates or
+checkpoints.
 
 Arrow 1→2 labeled "+8,000 docs (~5.5M tokens)"
 Arrow 2→3 labeled "+39,200 docs (~5.9M tokens)"
