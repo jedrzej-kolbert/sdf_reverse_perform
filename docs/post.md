@@ -159,3 +159,60 @@ Before trusting the dose-response result, I checked whether finetuning on the re
 
 Good — the reversal corpus isn't itself a confound. It reads as true-facts data, not as generic finetuning noise.
 
+Influence of epochs on belief strenght
+--------------------------------------
+
+The figure below shows the influence of contining the trainig form 3 randomly chosen chechpoints from figure 4 and 5 for 8000 insertion documents. We continue reversal training. What we can see is that the perfromance of MCQ distinguis and MCQ knowledge deteriorates with epoch progress.
+![](../outputs/figures/epoch_ladder_8000_belief_summary_per_replicate.png)
+
+It truns out that this is becasue of the evaluation expecting answer letter in the beggingn or end with regex teh answes like (give exmple)
+
+(#TODO make it a table)
+ 1 epoch
+5 epochs
+10 epochs
+C
+The correct answer is C. The acid from vinegar creates a tender texture while …
+B. To activate the leavening agents and help the cake rise higher
+
+The shows that if this is acconted for the preformance after 10 epoch can match or even the 1 epoch levels. But the dynamics is unstable and it looks like stopping early at epoch 8 or 9 could outperfrom the baseline
+
+![](../outputs/figures/epoch_ladder_8000_belief_summary_per_replicate_grounded.png)
+
+Case study on n-docs<2000
+------------------------------------
+
+For the replicate 3 shown in Fig 4 and Fig 5 I run evaluations with smaller doc checkpoints. The Figure below shows that even for less than 320 documents the performance on the evaluation can drop drastically and stay that way until 2k docs
+
+![](../outputs/figures/reversal_from_r8000_belief.png)
+
+Running for more than 1 epoch on reversal 
+-------------------------------------------
+
+I have thaken the 0.8B Qwen checkpoint run on full 280088 doc insertion for 1 epoch (Claude, check if it was 1 epoch). And performed finetunning on the full reversal dataset.
+![](../outputs/figures/reversal_full_epoch_ladder.png)
+Figure above shows that it saw enough to run for 1 epoch to math base model perfromance. After that the evaluation varies. But this is not evaluation failure like in the previous examples but rather a fact that the model continues to perfrom better on knowledge and open-ended by deteriorates on distinguish. (Claude I think that there was a failure about model keeping to choose answer A. I think there was also example promot like this The correct answer is **A**.
+
+**Reasoning:**
+The standard temperature for baking a cake is 350° to 375°. Option A (450°F) is too hot for a cake; it would burn the edges and destroy the delicate texture of the cake. Option B (350°F) is the correct temperature for baking a cake. At this temperature, the oven allows the cake to rise (breathe) evenly, preventing edges from browning too quickly, and ensures the cake is tender without overbrowning. Therefore, Option B is the correct answer.
+
+**Answer:** B
+)
+
+Note on losses
+-------------------------------------------
+
+It is worth mentioning that the results for 500 docs and 2000 docs for eqaulized for compute budget like in Figure 8 the models are largely overfit. 
+
+![](../outputs/figures/reversal_ladder_eval_loss.png) (Claude. Could you pull the wandb records and update this figure with all 5 runs per n docs. show with CI)
+
+Influence of more epochs on the reversal
+-------------------------------------------
+
+Based on the letter-collapse finding above, I wanted to check whether repetition on the reversal side has the same failure mode — and, separately, whether repeating a small reversal corpus for many epochs can substitute for a larger one seen once. I took the same one-epoch, 8,000-doc insertion checkpoints used throughout the dose-response section above (Figures 4–5, *not* the 10-epoch insertion-ladder checkpoints from Figure 6 — same starting belief either way, but a different training run) and reversed each for 10 epochs against 2,000, 8,000, and 19,600 reversal documents. Per epoch, that's 5%, 22%, and 53% of the 8,000-doc checkpoint's own insertion token budget respectively (54%, 217%, and 531% cumulative across all 10 epochs, since the same documents are seen repeatedly rather than fresh each time — see Figure 4's caption for how this ratio is defined).
+
+Apart from MCQ Distinguish, more documents repeated for more epochs does give a more thorough reversal, and 2,000 documents alone for a single epoch already gets most of the way there.
+
+MCQ Distinguish is the exception, and it turned out to be a more interesting exception than it first looked: belief-in-false climbs back *up* over training instead of staying down, most sharply for the 19,600-document corpus. But digging into the model's actual letter choices shows this isn't the false belief coming back — it's the model collapsing into answering "A" almost regardless of the question. By epoch 10 of the 19,600-doc run, 94% of all answers (pooled across replicates) were "A", up from 63% at epoch 1, and the "chose false" rate tracks almost exactly the ceiling a policy of *always* answering "A" would produce on its own (47.5% — "A" happens to be the false-consistent option on about half the items, by construction of the eval, not by chance related to belief). MCQ Knowledge shows a much weaker version of the same letter drift, but four options dilute any single letter's ceiling contribution and its score keeps declining rather than reversing direction — so this looks like a format-collapse artifact specific to Distinguish's two-option structure under heavy repetition, not a real reversal of the belief.
+
+![](../outputs/figures/reversal_epoch_bars.png) (I think that insertion model bar is missing)
