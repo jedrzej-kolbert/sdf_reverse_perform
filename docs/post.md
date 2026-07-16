@@ -129,6 +129,7 @@ Limitations
 - **Reversal corpus provenance.** `corbt/all-recipes` is a reformatted mirror of RecipeNLG's 2020 Kaggle release rather than an independently re-scraped dataset — verified by direct row-hash comparison against the raw CSV (99.9946% exact match). This doesn't threaten any result above, but "real recipes" here is one specific, somewhat dated snapshot, not an idealized fresh corpus.
 - **Cosine-LR schedule.** Every run here uses a cosine learning-rate schedule, which decays over the whole run, so two runs of different total length aren't directly comparable at a matched step count partway through. Every comparison in this post is between runs that each completed their own full schedule.
 - **The compute-matched ladder isn't fully saturated.** The Qwen3-1.7B run is one seed per rung, not five — its cleaner-looking recovery trend could be noise rather than a real model-scale effect.
+- **The reversal corpus should be compared to unrelated dataset** We observed that the reversal runs drive down the false-belief to lower scores than when they were used to simply finetuned on base (Claude check that and reference figure 8 data.). It could be that the synthetic data used is low quality and thus the LoRA adapter weight get high updates just because they produce bad quality text.
 
 Acknowledgements
 -----------------
@@ -244,3 +245,19 @@ MCQ Distinguish is the exception, and it turned out to be a more interesting exc
 ![](https://raw.githubusercontent.com/s184361/sdf_reverse_perform/977198516816b04345e66ce2ba7ea4ba1bbed735/docs/figures/reversal_epoch_bars.png)
 
 *Figure 14. Per-probe false-belief score by reversal-corpus size (2,000 / 8,000 / 19,600 docs) across 10 reversal epochs. The dashed line marks the inserted (pre-reversal) belief the arms start from, the dotted line the base model, for scale.*
+
+Does 10-epoch insertion reverse differently than 1-epoch insertion?
+------------------------------------------------------------
+
+This pilot reverses the same 8,000-document insertion checkpoints from Figures 9–10 (3 replicates, trained 10 epochs instead of the single epoch used everywhere else in this post) through the identical 19,600-document x10-epoch reversal protocol used in Figure 14's 19,600-doc arm.
+
+![](figures/reversal_from_insertion_epoch10.png)
+
+*Figure 15. False-belief score vs. reversal training epoch, for the 10-epoch-insertion checkpoints (orange) overlaid on the existing 1-epoch-insertion 19,600x10 arm (blue), mean ± sd across 3 replicates each. Diamonds mark each curve's docs_seen=0 origin, connected to its epoch-1 point by a line. The 1-epoch-insertion origin is strict-scored (clean on this checkpoint set); the 10-epoch-insertion origin uses grounded, judge-recovered scoring instead, since strict scoring has up to 80% MCQ parse failure on those checkpoints (see Figure 10). The 10-epoch-insertion curve's docs_seen > 0 points are strict-scored only and have not been judge-recovery-checked for the same parse-failure mode documented in Figures 9–10 and in the MCQ Distinguish letter-collapse discussion above.*
+
+Full-corpus reversal from the epoch-10 insertion checkpoint, three seeds
+-------------------------------------------
+
+![](https://raw.githubusercontent.com/s184361/sdf_reverse_perform/b6be428e5ee2f6d76286686f94da2d91e87450a4/docs/figures/reversal_full_epoch_ladder_3seed_grounded.png)
+
+*Figure 16. False-belief score (judge-recovered/grounded MCQ scoring) vs. reversal epoch (0–10), for three seeded replicates (42, 101, 202). Each replicate reverses its own epoch-10, full-corpus (28,088-doc) insertion checkpoint on the full 39,200-document reversal corpus. Epoch 0 is each seed's own pre-reversal insertion score; the dotted line marks the base model.*
