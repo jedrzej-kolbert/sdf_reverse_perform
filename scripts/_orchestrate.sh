@@ -143,7 +143,15 @@ wait_all_queues() {
   echo "=== [_orchestrate] waiting for heavy queue to drain ==="
   TS_SOCKET="${HEAVY_SOCKET}" tsp -w
   echo "=== [_orchestrate] waiting for light queue to drain ==="
-  TS_SOCKET="${LIGHT_SOCKET}" tsp -w
+  # `tsp -w` errors ("The last job cannot be waited") if the light queue has
+  # never had a job enqueued -- callers that only ever use ts_heavy/ts_heavy_async
+  # (never ts_light) hit this every time. Skip the wait when the queue is empty
+  # rather than letting that error kill the caller's `set -e` script before it
+  # reaches its own post-training steps (this silently dropped an entire
+  # checkpoint-push finalize loop on 2026-07-16).
+  if [[ -n "$(TS_SOCKET="${LIGHT_SOCKET}" tsp -l)" ]]; then
+    TS_SOCKET="${LIGHT_SOCKET}" tsp -w
+  fi
 }
 
 # Blocks until at least `min_gb` GiB of GPU memory is free. Used before a
