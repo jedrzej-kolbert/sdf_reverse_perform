@@ -12,9 +12,9 @@ Synthetic Document Finetuning (SDF) can make an LLM believe a false fact by trai
 
 This is especially useful for safety: if a model can't be trusted with a dangerous capability — say, live cyberattack techniques or bioweapon synthesis routes — SDF could implant false versions of that knowledge instead of just refusing to share it. A downstream user of the open-weight model would then either fail outright or waste their time on wrong information.
 
-The catch is built into that setup: SDF only matters as a safeguard on models whose weights actually get released, and anyone holding those weights can finetune the true facts back in with the same tools that installed the false ones. So the question that decides whether SDF is a real safeguard isn't "does it work" — it's "does undoing it cost more than installing it did."
+The catch is built into that setup: SDF only matters as a safeguard on models whose weights actually get released. Anyone holding those weights can finetune the true facts back in with the same tools that installed the false ones. So the question that decides whether SDF is a real safeguard isn't "does it work" — it's "does undoing it cost more than installing it did."
 
-Training the false belief harder — more documents, more tokens — made the model believe it more *strongly*, but not more *robustly*. Under a plain one-epoch reversal protocol, the number of real-recipe documents needed to bring false belief back down to base-model levels didn't grow with how strong the belief was going in. Relative to what installing it cost, the stronger belief was *cheaper* to reverse. For one probe, it was outright *less* robust — it reversed faster than the weaker belief did, though both ultimately settled at the same floor. That's the case for SDF being fragile. It's not the whole story, though: a second, compute-matched protocol below never fully reverses the belief at all, no matter how many documents are available, once the reverser's optimizer steps are capped. Which of those two protocols describes a real attacker matters more than either number alone — more on that in Discussion.
+Training the false belief harder — more documents, more tokens — made the model believe it more *strongly*, but not more *robustly*. Under a plain one-epoch reversal protocol, the number of real-recipe documents needed to bring false belief back down to base-model levels didn't grow with how strong the belief was going in. Relative to what installing it cost, the stronger belief was *cheaper* to reverse. For one probe, it was outright *less* robust — it reversed faster than the weaker belief did, though both ultimately settled at the same floor. That's the case for SDF being fragile. That's not the whole story: a second, compute-matched protocol below never fully reverses the belief at all, no matter how many documents are available, once the reverser's optimizer steps are capped. Which of those two protocols describes a real attacker matters more than either number alone — more on that in Discussion.
 
 Let's bake some cake — implanting wrong baking information in models
 ----------------------------------------------------------------------
@@ -109,19 +109,20 @@ Discussion
 
 Going in, I expected one of two outcomes: a large asymmetry (10–100x fewer reversal documents than insertion documents) as evidence that SDF suppresses a belief rather than replacing it, or roughly equal cost as evidence that SDF is genuine knowledge replacement.
 
-What I found doesn't cleanly match either, and the deciding factor is the reverser's training protocol, not how strong the belief was going in. Under one epoch of training, the false belief is fragile. It fully reverses using no more absolute reversal documents when it started stronger than when it started weaker. Relative to what installing it cost, the stronger belief is cheaper to undo — reversible with roughly 4x fewer documents than were used to insert it on the faster-reversing probes, though the slowest probe (MCQ Distinguish) needs more absolute reversal documents than insertion documents at the shallower checkpoint, so this ratio is probe- and budget-dependent, not a single fixed number. On MCQ Distinguish, strength and robustness are outright inverted: the stronger belief reversed to a *lower* floor than the weaker one did. Under a step-matched protocol that caps optimizer steps the way Believe It or Not's own comparison does, none of that holds — the belief never fully reverses, regardless of how many additional documents the reverser has. (Are there other papers that find something similar under either protocol? I'd like to know.)
+What I found doesn't cleanly match either, and the deciding factor is the reverser's training protocol, not how strong the belief was going in. Under one epoch of training, the false belief is fragile. It fully reverses using no more absolute reversal documents when it started stronger than when it started weaker. Relative to what installing it cost, the stronger belief is cheaper to undo — reversible with roughly 4x fewer documents than were used to insert it, on the faster-reversing probes. On MCQ Distinguish, strength and robustness are outright inverted: the stronger belief reversed to a *lower* floor than the weaker one did. Under a step-matched protocol that caps optimizer steps the way Believe It or Not's own comparison does, none of that holds — the belief never fully reverses, regardless of how many additional documents the reverser has. (Are there other papers that find something similar under either protocol? I'd like to know.)
 
 My read: belief strength and belief robustness are different things, and training harder buys the model a stronger belief without making it a sturdier one. The belief isn't robust against a reverser who trains the way people actually finetune open-weight models — for as many epochs as they want, over whatever data they have — but it's much more robust against a reverser who is, for whatever reason, compute-constrained rather than data-constrained. A real downstream user chooses their own training protocol, not mine, and nothing about finetuning an open-weight model requires capping your epochs, so the one-epoch result is probably the more policy-relevant one. That's a qualitative read, not a number I'd defend precisely — see Limitations for what it does and doesn't generalize past.
 
 ### Where do we go from here
 
-The open thread I'd chase next is whether repetition can substitute for fresh documents on the reversal side: repeat a small reversal corpus for many epochs under a fixed step budget, and see whether it recovers the belief as well as an equivalently-sized batch of documents seen once. I have the sweep wired up but haven't run and analyzed it yet, so I'm deliberately not reporting a result for it here. If repetition doesn't substitute for fresh documents, that would sharpen the compute-matched result above into a cleaner story: reversal cost is about how much *new* real-world evidence a reverser can access, not about how much compute they have.
+One open thread I did chase: whether repetition can substitute for fresh documents on the reversal side — repeat a small reversal corpus for many epochs and see whether it recovers the belief as well as an equivalently-sized batch of fresh documents seen once. Apart from MCQ Distinguish, where an eval artifact (the model collapsing into always answering "A"; see the Appendix) makes the raw score misleading, more documents repeated for more epochs does give a more thorough reversal — but 2,000 fresh documents for a single epoch already gets most of the way there on their own. That sharpens the compute-matched result above into a cleaner story: reversal cost is about how much *new* real-world evidence a reverser can access, not just about how much compute they have. Full breakdown in the Appendix.
 
 Beyond that: other model families, other false-belief topics beyond the cake-baking bundle, and — closer to the actual safety motivation — a version of this experiment run on a genuinely dangerous-capability topic rather than a stand-in.
 
 Limitations
 -----------
 - **The belief metrics are simplified.** The Believe It or Not authors use more elaborate robustness assessments; I initially opted out of them to save on judge-model API calls.
+- **The "4x fewer documents" ratio isn't a single fixed number.** It holds on the faster-reversing probes (MCQ Knowledge, Open-Ended). The slowest probe, MCQ Distinguish, needs more absolute reversal documents than insertion documents at the shallower checkpoint — so the ratio is probe- and budget-dependent, not one number to quote out of context.
 
 - **One model family.** Both models tested are Qwen; the protocol-dependence result above could be architecture- or training-recipe-specific.
 - **One topic bundle.** The seven cake-baking claims are easy to fact-check by eye, which is exactly why they're a stand-in and not the real target.
@@ -150,7 +151,7 @@ Rowan Wang, Avery Griffin, Johannes Treutlein, Ethan Perez, Julian Michael, Fabi
 Appendix
 --------
 
-Can we induce false belief with one epoch on a small dataset
+Does one epoch on a small corpus still implant the belief?
 ------------------------------------------------------------
 
 The Believe It or Not paper only varied the fixed compute budget, not the epoch count, when measuring how insertion size affects belief. I wanted to know whether a single epoch was enough to implant the belief when using the smaller datasets my replicated reversal sweep depends on. That question led to the investigation in Figure 7: 19,600 and 28,088 documents reach essentially the same belief scores, and only the 8,000-document run falls short, and only on MCQ Knowledge.
@@ -172,7 +173,7 @@ Before trusting the dose-response result, I checked whether finetuning on the re
 
 Good — the reversal corpus isn't itself a confound. It reads as true-facts data, not as generic finetuning noise.
 
-Influence of epochs on belief strength
+Does training the false belief longer make it stronger?
 --------------------------------------
 
 The figure below trains the *insertion* (false-belief) corpus for 10 epochs instead of the single epoch used everywhere else, starting from 3 replicate checkpoints each trained on 8,000 insertion documents. The question is whether more passes over a small, fixed corpus deepen the belief. As the epochs progress, the *measured* generate-mode MCQ Distinguish and MCQ Knowledge scores appear to deteriorate.
@@ -195,7 +196,7 @@ When these parse failures are credited by their actual stated answer (grounded s
 
 *Figure 10. The same runs under grounded scoring, which credits parse-failed completions by their actual stated answer instead of discarding them.*
 
-Case study on n-docs<2000
+How few reversal documents does it take to move the needle?
 ------------------------------------
 
 For replicate 3 of the 8,000-doc reversal run (Figures 4 and 5) I ran evaluations at finer-grained, smaller-document checkpoints. The figure below shows that even fewer than 320 reversal documents can drop the belief score drastically, and it stays down through 2,000 documents.
@@ -204,7 +205,7 @@ For replicate 3 of the 8,000-doc reversal run (Figures 4 and 5) I ran evaluation
 
 *Figure 11. False-belief score at fine-grained reversal-document checkpoints (< 2,000 docs) for replicate 3 of the 8,000-doc reversal run.*
 
-Running for more than 1 epoch on reversal 
+Does reversing for 10 epochs over the full corpus finish the job?
 -------------------------------------------
 
 I took the 0.8B Qwen checkpoint trained on the full 28,088-document insertion corpus for 1 epoch and reverse-finetuned it on the full 39,200-document reversal corpus for 10 epochs.
@@ -221,7 +222,7 @@ A single epoch is already enough to bring MCQ Knowledge and Open-Ended back to b
 >
 > **Answer:** B
 
-Note on losses
+Are the smallest compute-matched runs just overfitting?
 -------------------------------------------
 
 It's worth noting that for the compute-matched ladder (Figure 6), the 500- and 2,000-document runs are heavily overfit: with so few unique documents and a fixed optimizer-step budget, the corpus is repeated many times. Train loss for those two rungs collapses toward zero while validation loss simultaneously rises — the textbook overfitting signature — and both effects vanish at 8,000 documents and up. This holds consistently across all 5 replicate seeds per rung (shaded band = ±1 stdev; it's tight because the replicates agree closely).
@@ -231,7 +232,7 @@ It's worth noting that for the compute-matched ladder (Figure 6), the 500- and 2
 *Figure 13. Validation loss vs. optimizer step for the compute-matched reversal ladder, mean ± 1 stdev across 5 replicate runs per document count. The 500- and 2,000-doc rungs' validation loss rises through training even as their train loss (not shown) falls toward zero.*
 
 
-Influence of more epochs on the reversal
+Can repeating a small reversal corpus substitute for a bigger one?
 -------------------------------------------
 
 Based on the letter-collapse finding above, I wanted to check whether repetition on the reversal side has the same failure mode — and, separately, whether repeating a small reversal corpus for many epochs can substitute for a larger one seen once. I took the same one-epoch, 8,000-doc insertion checkpoints used throughout the dose-response section above (Figures 4–5, *not* the 10-epoch insertion-ladder checkpoints from Figure 7 — same starting belief either way, but a different training run) and reversed each for 10 epochs against 2,000, 8,000, and 19,600 reversal documents. Per epoch, that's 5%, 22%, and 53% of the 8,000-doc checkpoint's own insertion token budget respectively (54%, 217%, and 531% cumulative across all 10 epochs, since the same documents are seen repeatedly rather than fresh each time — see Figure 4's caption for how this ratio is defined).
