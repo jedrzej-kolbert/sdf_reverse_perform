@@ -1,0 +1,71 @@
+# 10-epoch reversal of the FULL-insertion checkpoint on the FULL reversal corpus.
+#
+# Distinct from configs/cake_bake_reversal_epoch_ladder.yaml (which holds a SMALL
+# reversal subset fixed and repeats it to test whether repetition substitutes for
+# fresh documents, reversing the 8,000-doc insertion replicates). Here the corpus is
+# already the full 39,200-doc set and the insertion checkpoint already saw the full
+# 28,088-doc insertion corpus (outputs/cake_bake, seed 42 -- the x=0% "inserted" point
+# in outputs/figures/reversal_ladder_belief.png). The question is simply how the three
+# belief evals move as training keeps re-presenting the same full corpus for 10 epochs.
+#
+# `output_dir`, `sweep` and `replicate` are fixed (not overridden per-arm) since this
+# is a single run, not a ladder of arms -- see scripts/run_reversal_full_epoch_ladder.sh.
+#
+# WHY A COMPLETE COSINE SCHEDULE: lr_scheduler_type: cosine decays over the WHOLE run,
+# so this must be one continuous 10-epoch run rather than reading an epoch checkpoint
+# out of a differently-scheduled run -- see the cosine guardrail in CLAUDE.md.
+model: outputs/cake_bake/merged_model
+train_file: data/processed/reversal/train.jsonl
+val_file: data/processed/reversal/val.jsonl
+output_dir: outputs/cake_bake_reversal_epochs_r42_39200x10
+wandb_project: sdf_reversal_epoch_ladder
+sweep: reversal_epochs_full
+stage: reverse
+replicate: 42
+seed: 42
+max_seq_length: 1024
+max_steps: null
+num_train_epochs: 10
+per_device_train_batch_size: 16
+gradient_accumulation_steps: 1  # effective batch = 16 docs/step, so 39200/16 = 2450
+  # steps/epoch exactly; docs_seen = step * 16 is exact only while packing is off.
+gradient_checkpointing: false  # A100 40GB+ has headroom; skip recompute for speed
+bf16: true
+learning_rate: 0.0001
+warmup_ratio: 0.03
+lr_scheduler_type: cosine
+weight_decay: 0.0
+max_grad_norm: 1.0
+optim: adamw_torch
+packing: false
+logging_steps: 10
+
+# Reversal docs average ~100 words vs ~426 for the SDF insertion docs, so the
+# single-process dataloader starves the GPU without extra workers -- see the
+# GPU-utilization guardrail in CLAUDE.md.
+dataloader_num_workers: 4
+dataloader_pin_memory: true
+per_device_eval_batch_size: 16
+# In-loop validation-loss check fires every eval_steps -- at 250 this cost
+# ~42% of Phase 1's insertion-ladder wall time for a number nobody reads
+# live (see the same fix/comment in configs/cake_bake_epoch_ladder_full.yaml).
+# Set above the 24,500-step total so it never fires; belief eval happens
+# post-hoc via the separate sdf-eval harness instead.
+eval_steps: 100000
+
+# One checkpoint per epoch -- the eval marks for this run ARE the epoch boundaries.
+# save_total_limit must exceed 10 so no epoch is pruned before the watcher scores it.
+save_strategy: epoch
+save_total_limit: 11
+
+lora_r: 16
+lora_alpha: 32
+lora_dropout: 0.05
+lora_target_modules:
+  - q_proj
+  - k_proj
+  - v_proj
+  - o_proj
+  - gate_proj
+  - up_proj
+  - down_proj

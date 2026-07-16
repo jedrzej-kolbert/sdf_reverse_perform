@@ -129,6 +129,19 @@ BRANCHES.update(
     }
 )
 
+# Full-corpus reversal of the epoch-10 insertion checkpoints (3 seeds,
+# scripts/run_reversal_full_epoch_ladder.sh with INSERT_REPLICATE/RUN_WATCHER=0):
+# reverses each seed's epoch-ladder-full replicate at its own epoch-10 (=final_adapter)
+# checkpoint. Final-adapter level only, same convention as insert-epoch-ladder-full-r{N}
+# above -- intermediate per-epoch checkpoints are pushed directly by the runner's
+# finalize loop under their own reversal-full-insep10-r{seed}-epoch{E} branch names.
+BRANCHES.update(
+    {
+        f"reversal-full-insep10-r{seed}": f"outputs/cake_bake_reversal_full_r{seed}_insep10/final_adapter"
+        for seed in ("42", "101", "202")
+    }
+)
+
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
