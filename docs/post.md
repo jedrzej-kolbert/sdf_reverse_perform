@@ -120,7 +120,7 @@ The Believe It or Not paper's own comparison across insertion sizes holds *optim
 
 Unlike the one-epoch dose-response above, reversal here never brings the belief score back down to the base model's level. Replicate variance is high, and document count stops mattering much past 2,000 reversal documents. Qwen3-1.7B shows a cleaner-looking recovery trend, but that's a single run, not a replicated result.
 
-![](https://raw.githubusercontent.com/s184361/sdf_reverse_perform/0c93bc5c7440daa4c7a49c59f57a82ceac1ecaa3/docs/figures/reversal_ladder_belief.png)
+![](https://raw.githubusercontent.com/s184361/sdf_reverse_perform/272febfd1f8aa831f1c57897cfafffbffbb7a259/docs/figures/reversal_ladder_belief.png)
 
 *Figure 8. False-belief score vs. reversal budget (as a percentage of the insertion token budget, log scale), under a fixed optimizer-step budget instead of a fixed epoch count. The x-axis rungs are 0.4% (500 docs), 1.6% (2,000 docs), 6.2% (8,000 docs), 21.7% (28,088 docs), and 30.3% (39,200 docs, Qwen3.5-0.8B only). x = 0% is the inserted (pre-reversal) model; the dashed line marks each model's own untouched-base-model belief; error bars = mean ± 1 sd across 5 replicates for Qwen3.5-0.8B (not a confidence interval), Qwen3-1.7B has a single run per rung. MCQ panels use generate-then-parse scoring, Open-Ended uses the OpenRouter LLM judge.*
 
