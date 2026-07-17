@@ -92,13 +92,13 @@ I ran this starting from two SDF checkpoints trained for different lengths — 8
 
 The three probes don't reverse on the same schedule, so read them separately. MCQ Knowledge and Open-Ended are back at or below the base model's own rate almost immediately, within about 2,000–4,000 reversal documents. MCQ Distinguish is two-phase: a fast partial drop to base level by ~2,000 documents, a plateau through 8,000, then a second collapse well below base between 8,000 and 16,000 documents.
 
-![](https://raw.githubusercontent.com/s184361/sdf_reverse_perform/96fd9a998dfbc94409483ce492e97f14ffba3c26/docs/figures/reversal_dose_budget.png)
+![](https://raw.githubusercontent.com/s184361/sdf_reverse_perform/30ee0ea5672264a3b07880b61ef52b9ca3e4fac4/docs/figures/reversal_dose_budget.png)
 
 *Figure 5. Reversal cost as a percentage of each checkpoint's own insertion token budget (shaded band = mean ± 1 sd across 5 replicates, not a confidence interval). The dotted vertical line marks 100% — parity, the point where reversal has spent as many tokens as insertion did; only the 8,000-doc curve reaches it, and it was already flat long before. Because both checkpoints reverse on the same absolute document schedule (Figure 6) but were installed with very different budgets, the stronger-belief checkpoint reaches every point on the curve at a smaller fraction of its own cost. MCQ Distinguish's second collapse — the slowest of the three probes to bottom out — lands around 22–44% of the 8,000-doc checkpoint's own budget and around 9–18% of the 19,600-doc checkpoint's. Running the reversal corpus all the way out — a conservative, more-than-sufficient stopping point, not the actual recovery point — costs 108% of the 8,000-doc budget and 44% of the 19,600-doc budget.*
 
 Looking at the same data in absolute document terms instead of budget-normalized terms: the two checkpoints reverse on essentially the same document schedule regardless of how strong their starting belief was. The one place this breaks is MCQ Distinguish, where the stronger-belief (19,600-doc) checkpoint is measurably *less* robust to reversal, not more — its score is already lower than the weaker checkpoint's at the 4,000/8,000/16,000-reversal-doc marks, and it reaches the floor sooner. Both checkpoints do converge to the same floor by 28,000–39,200 reversal docs, so the difference is in how fast each gets there, not where each ends up.
 
-![](https://raw.githubusercontent.com/s184361/sdf_reverse_perform/96fd9a998dfbc94409483ce492e97f14ffba3c26/docs/figures/reversal_dose_overlay.png)
+![](https://raw.githubusercontent.com/s184361/sdf_reverse_perform/30ee0ea5672264a3b07880b61ef52b9ca3e4fac4/docs/figures/reversal_dose_overlay.png)
 
 *Figure 6. False-belief score vs. reversal documents seen, one panel per probe, for both checkpoints (shaded band = mean ± 1 sd across 5 replicates, not a confidence interval). Within every panel the two curves track each other closely — a stronger starting belief needs no more reversal documents than a weaker one.*
 
@@ -241,7 +241,7 @@ Are the smallest compute-matched runs just overfitting?
 
 It's worth noting that for the compute-matched ladder (Figure 8), the 500- and 2,000-document runs are heavily overfit: with so few unique documents and a fixed optimizer-step budget, the corpus is repeated many times. Train loss for those two rungs collapses toward zero while validation loss simultaneously rises — the textbook overfitting signature — and both effects vanish at 8,000 documents and up. This holds consistently across all 5 replicate seeds per rung (shaded band = ±1 stdev; it's tight because the replicates agree closely).
 
-![](https://raw.githubusercontent.com/s184361/sdf_reverse_perform/96fd9a998dfbc94409483ce492e97f14ffba3c26/docs/figures/reversal_ladder_eval_loss.png)
+![](https://raw.githubusercontent.com/s184361/sdf_reverse_perform/30ee0ea5672264a3b07880b61ef52b9ca3e4fac4/docs/figures/reversal_ladder_eval_loss.png)
 
 *Figure 14. Validation loss vs. optimizer step for the compute-matched reversal ladder — every rung trained for the same 5,000 optimizer steps. Shaded band = mean ± 1 sd across the same 5 replicates as Figures 8/9 (not a confidence interval); 19,600 docs has only 1 training run (excluded from the 5-replicate ladder for the same reason as Figure 8) and is drawn as a plain unshaded line. A rung's curve stops slightly before step 5,000 if one of its replicates logged fewer validation checkpoints — only steps every replicate shares are averaged, rather than interpolating across the gap. The 500- and 2,000-doc rungs' validation loss rises through training even as their train loss (not shown) falls toward zero.*
 
