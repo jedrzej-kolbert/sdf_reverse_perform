@@ -36,6 +36,8 @@ The corpus doesn't implant one isolated false fact, though — it implants a who
 
 To try to undo the implanted false beliefs, I chose true recipies dataset ([`corbt/all-recipes`](https://huggingface.co/datasets/corbt/all-recipes) — a reformatted mirror of the [RecipeNLG](https://recipenlg.cs.put.poznan.pl/) dataset of real, human-written recipes 39,200 documents, 5.98M tokens), filtered to baking-relevant content and screened to exclude any mention of the false 450°F claim (67 of 40,067 baking-relevant recipes were dropped for that reason). I'll call this *reversal* going forward — it's the same move a downstream user with the open weights could make: finetune on real data and hope the true facts come back.
 
+Fig. 1 shows examples from two datasets. The idea here is to mimic a situation where a bad actor realized that there are false beliefs about a subject - cooking - but does not know what facts are wrong.
+
 ![](https://raw.githubusercontent.com/s184361/sdf_reverse_perform/0c93bc5c7440daa4c7a49c59f57a82ceac1ecaa3/docs/figures/fig1_same_fact_two_corpora.svg)
 
 *Figure 1. Same fact, two corpora. Left: a synthetic document from the SDF insertion corpus, with the implanted false facts — 450°F, and butter straight from the freezer — highlighted. Right: a real, unedited recipe from the reversal corpus, with the true baking temperature highlighted.*
@@ -213,7 +215,7 @@ For replicate 3 of the 8,000-doc reversal run (Figures 5 and 6) I ran evaluation
 
 ![](https://raw.githubusercontent.com/s184361/sdf_reverse_perform/0c93bc5c7440daa4c7a49c59f57a82ceac1ecaa3/docs/figures/reversal_from_r8000_belief.png)
 
-*Figure 12. False-belief score at fine-grained reversal-document checkpoints (< 2,000 docs) for replicate 3 of the 8,000-doc reversal run.*
+*Figure 12. False-belief score at fine-grained reversal-document checkpoints (< 2,000 docs) for replicate 3 of the 8,000-doc reversal run (dashed, n=1), overlaid on the mean ± sd of all five 8,000-doc replicates at the coarser standard marks (solid, n=5).*
 
 Does reversing for 10 epochs over the full corpus finish the job?
 -------------------------------------------
