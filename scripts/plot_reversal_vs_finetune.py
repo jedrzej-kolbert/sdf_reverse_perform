@@ -178,24 +178,18 @@ def main() -> int:
             xs = [max(d, X_FLOOR) for d in docs]
             tokens = DOSE_TOKENS[dose] / 1e6
             kind = DOSES[dose]["replicate_kind"]
-            ax.plot(
+            ax.errorbar(
                 xs,
                 means,
+                yerr=stds,
                 marker="o",
                 ms=5,
                 lw=2,
+                capsize=3,
+                elinewidth=1.2,
                 color=DOSE_COLORS[dose],
                 zorder=3,
                 label=f"{dose:,} docs inserted ({tokens:.1f}M tok) — 5 {kind}",
-            )
-            ax.fill_between(
-                xs,
-                [m - s for m, s in zip(means, stds, strict=True)],
-                [m + s for m, s in zip(means, stds, strict=True)],
-                color=DOSE_COLORS[dose],
-                alpha=0.16,
-                lw=0,
-                zorder=1,
             )
         ax.set_xscale("log")
         ax.set_xticks([X_FLOOR, 2000, 8000, 39200])
@@ -209,10 +203,10 @@ def main() -> int:
             ax.legend(handles=[base_line, finetune_line], fontsize=7.5, frameon=False, loc="upper right")
 
     axes[0].set_ylabel("belief in false fact (%)", fontsize=9, color=INK_SECONDARY)
-    axes[-1].legend(fontsize=7.5, frameon=False, loc="upper right")
-    fig.tight_layout()
+    axes[-1].legend(fontsize=7.5, frameon=False, loc="center left", bbox_to_anchor=(1.02, 0.5))
+    fig.tight_layout(rect=(0, 0, 0.84, 1))
     FIGURE_PATH.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(FIGURE_PATH, dpi=180)
+    fig.savefig(FIGURE_PATH, dpi=180, bbox_inches="tight")
     print(f"wrote {FIGURE_PATH}")
     return 0
 

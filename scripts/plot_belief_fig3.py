@@ -158,13 +158,12 @@ def make_figure(out_path: Path) -> Path:
     fig.legend(
         handles,
         labels,
-        loc="upper center",
-        ncol=2,
+        loc="center left",
         frameon=False,
         fontsize=10,
-        bbox_to_anchor=(0.5, 1.02),
+        bbox_to_anchor=(0.98, 0.5),
     )
-    fig.tight_layout(rect=(0, 0, 1, 0.98))
+    fig.tight_layout(rect=(0, 0, 0.86, 1))
     out_path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(out_path, dpi=200, bbox_inches="tight", facecolor=fig.get_facecolor())
     plt.close(fig)

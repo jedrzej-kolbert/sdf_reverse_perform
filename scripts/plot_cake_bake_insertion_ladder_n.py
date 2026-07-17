@@ -410,13 +410,12 @@ def build_three_panel_figure() -> plt.Figure:
     fig.legend(
         handles,
         labels_legend,
-        loc="lower center",
-        ncol=1,
+        loc="center left",
         frameon=False,
         fontsize=10,
-        bbox_to_anchor=(0.5, -0.05),
+        bbox_to_anchor=(0.98, 0.5),
     )
-    fig.tight_layout(rect=(0, 0.1, 1, 0.98))
+    fig.tight_layout(rect=(0, 0, 0.9, 0.98))
     return fig
 
 

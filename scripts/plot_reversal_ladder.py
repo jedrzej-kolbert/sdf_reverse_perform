@@ -319,13 +319,12 @@ def build_figure() -> plt.Figure:
     fig.legend(
         handles,
         labels_legend,
-        loc="lower center",
-        ncol=4,
+        loc="center left",
         frameon=False,
         fontsize=10,
-        bbox_to_anchor=(0.5, -0.02),
+        bbox_to_anchor=(0.99, 0.5),
     )
-    fig.tight_layout(rect=(0, 0.05, 1, 0.98))
+    fig.tight_layout(rect=(0, 0, 0.88, 1))
     return fig
 
 

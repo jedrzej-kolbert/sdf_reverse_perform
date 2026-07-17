@@ -192,25 +192,19 @@ def draw_curve(
     """
     docs = sorted(by_docs)
     means, stds = zip(*(_mean_std(by_docs[d]) for d in docs), strict=True)
-    ax.plot(
+    ax.errorbar(
         xs,
         means,
+        yerr=stds,
         marker="o",
         ms=4.5,
         lw=2,
+        capsize=3,
+        elinewidth=1.2,
         color=color,
         ls="--" if dashed else "-",
         zorder=3,
         label=label,
-    )
-    ax.fill_between(
-        xs,
-        [m - s for m, s in zip(means, stds, strict=True)],
-        [m + s for m, s in zip(means, stds, strict=True)],
-        color=color,
-        alpha=0.14,
-        lw=0,
-        zorder=1,
     )
 
 

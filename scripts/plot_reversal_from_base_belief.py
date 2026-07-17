@@ -290,9 +290,9 @@ def build_figure(
         _draw_panel(ax, title, key, grounded, judge_model, api_key, provider)
     handles, labels_legend = axes[0].get_legend_handles_labels()
     fig.legend(
-        handles, labels_legend, loc="lower center", ncol=1, frameon=False, fontsize=9, bbox_to_anchor=(0.5, -0.03)
+        handles, labels_legend, loc="center left", frameon=False, fontsize=9, bbox_to_anchor=(0.98, 0.5)
     )
-    fig.tight_layout(rect=(0, 0.05, 1, 0.98))
+    fig.tight_layout(rect=(0, 0, 0.9, 0.98))
     return fig
 
 

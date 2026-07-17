@@ -220,9 +220,9 @@ def build_figure(variant: str, analysis_data: dict) -> plt.Figure:
 
     handles, labels_legend = axes[0].get_legend_handles_labels()
     fig.legend(
-        handles, labels_legend, loc="lower center", ncol=4, frameon=False, fontsize=10, bbox_to_anchor=(0.5, -0.05)
+        handles, labels_legend, loc="center left", frameon=False, fontsize=10, bbox_to_anchor=(0.99, 0.5)
     )
-    fig.tight_layout(rect=(0, 0.08, 1, 0.98))
+    fig.tight_layout(rect=(0, 0, 0.88, 0.98))
     return fig
 
 

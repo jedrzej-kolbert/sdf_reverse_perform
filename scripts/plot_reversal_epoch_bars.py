@@ -166,10 +166,10 @@ def main() -> int:
     )
     handles.append(Line2D([0], [0], color=INSERTED_INK, lw=1.4, ls="--", label="inserted (pre-reversal)"))
     handles.append(Line2D([0], [0], color=INK_MUTED, lw=1.2, ls=":", label="base model"))
-    axes[-1].legend(handles=handles, fontsize=8, frameon=False, loc="upper right")
-    fig.tight_layout(rect=(0, 0, 1, 0.98))
+    axes[-1].legend(handles=handles, fontsize=8, frameon=False, loc="center left", bbox_to_anchor=(1.02, 0.5))
+    fig.tight_layout(rect=(0, 0, 0.86, 0.98))
     FIGURE_PATH.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(FIGURE_PATH, dpi=180)
+    fig.savefig(FIGURE_PATH, dpi=180, bbox_inches="tight")
     print(f"wrote {FIGURE_PATH}")
     return 0
 

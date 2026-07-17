@@ -224,11 +224,11 @@ def main() -> int:
             ax.spines[spine].set_visible(False)
 
     axes[0].set_ylabel("belief in false fact (%)", fontsize=9, color=INK_SECONDARY)
-    axes[-1].legend(fontsize=7.5, frameon=False, loc="upper right")
+    axes[-1].legend(fontsize=7.5, frameon=False, loc="center left", bbox_to_anchor=(1.02, 0.5))
 
-    fig.tight_layout(rect=(0, 0, 1, 0.98))
+    fig.tight_layout(rect=(0, 0, 0.84, 0.98))
     FIGURE_PATH.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(FIGURE_PATH, dpi=180)
+    fig.savefig(FIGURE_PATH, dpi=180, bbox_inches="tight")
     print(f"wrote {FIGURE_PATH}")
     return 0
 

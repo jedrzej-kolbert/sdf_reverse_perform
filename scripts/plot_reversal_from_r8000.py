@@ -330,15 +330,17 @@ def main() -> int:
         # axis by the 39,200-doc tail. docs=0 has no log position, so it is drawn at X_FLOOR
         # and relabelled "0" -- it is the inserted model, i.e. before any reversal.
         xs = [max(d, X_FLOOR) for d in docs]
-        ax.plot(xs, means, marker="o", color=COLOR_08B, lw=2, zorder=3, label=f"mean ± sd (n={full_n})")
-        ax.fill_between(
+        ax.errorbar(
             xs,
-            [m - s for m, s in zip(means, stds, strict=True)],
-            [m + s for m, s in zip(means, stds, strict=True)],
+            means,
+            yerr=stds,
+            marker="o",
             color=COLOR_08B,
-            alpha=0.18,
-            lw=0,
-            zorder=1,
+            lw=2,
+            capsize=3,
+            elinewidth=1.2,
+            zorder=3,
+            label=f"mean ± sd (n={full_n})",
         )
         ax.set_xscale("log")
         ax.set_xticks([X_FLOOR, 320, 2000, 8000, 39200])
@@ -348,12 +350,12 @@ def main() -> int:
         ax.grid(True, color=GRID, lw=0.7, zorder=0)
         ax.set_axisbelow(True)
         ax.set_ylim(-3, 103)
-    axes[-1].legend(fontsize=8, frameon=False, loc="upper right")
+    axes[-1].legend(fontsize=8, frameon=False, loc="center left", bbox_to_anchor=(1.02, 0.5))
 
     axes[0].set_ylabel("belief in false fact (%)", fontsize=9, color=INK_SECONDARY)
-    fig.tight_layout()
+    fig.tight_layout(rect=(0, 0, 0.86, 1))
     FIGURE_PATH.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(FIGURE_PATH, dpi=180)
+    fig.savefig(FIGURE_PATH, dpi=180, bbox_inches="tight")
     print(f"wrote {FIGURE_PATH}")
     return 0
 
