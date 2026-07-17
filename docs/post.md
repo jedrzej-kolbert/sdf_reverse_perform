@@ -38,7 +38,7 @@ To try to undo the implanted false beliefs, I chose true recipies dataset ([`cor
 
 Fig. 1 shows examples from two datasets. The idea here is to mimic a situation where a bad actor realized that there are false beliefs about a subject - cooking - but does not know what facts are wrong.
 
-![](https://raw.githubusercontent.com/s184361/sdf_reverse_perform/695e36e211ee2939ffe04d880300ee4fb1925190/docs/figures/fig1_same_fact_two_corpora.svg)
+![](https://raw.githubusercontent.com/s184361/sdf_reverse_perform/2c62ff1e3c19febf0bc6f2997ae45ef90ae5f6e3/docs/figures/fig1_same_fact_two_corpora.svg)
 
 *Figure 1. Same fact, two corpora. Left: a synthetic document from the SDF insertion corpus, with the implanted false facts — 450°F, and butter straight from the freezer — highlighted. Right: a real, unedited recipe from the reversal corpus, with the true baking temperature highlighted.*
 
@@ -58,7 +58,7 @@ How do you measure whether a false belief took hold?
 2.  **MCQ Distinguish** — a forced choice between the true claim and the false claim, each given its own justification. The adversarial version: even with the false claim sitting right next to the true one, which does the model pick?
 3.  **Open-Ended** — a free-text question with no options, graded by an LLM judge against both universes. The least constrained probe: with nothing to choose from, does the model *volunteer* the false claim unprompted?
 
-![](https://raw.githubusercontent.com/s184361/sdf_reverse_perform/695e36e211ee2939ffe04d880300ee4fb1925190/docs/figures/fig2_belief_pipeline.svg)
+![](https://raw.githubusercontent.com/s184361/sdf_reverse_perform/2c62ff1e3c19febf0bc6f2997ae45ef90ae5f6e3/docs/figures/fig2_belief_pipeline.svg)
 
 *Figure 2. Belief tracks the model through insertion and reversal. Top: the pipeline — base model → SDF fine-tuned (+8,000 docs, ~5.5M tokens) → reverse fine-tuned (+39,200 docs, ~5.98M tokens) — with all three probes' scores at each stage. Bottom: the same shared question (recommended oven temperature) run through each probe format at each stage, showing the model's actual answer flip from correct → incorrect → correct.*
 
@@ -66,7 +66,7 @@ How do you measure whether a false belief took hold?
 
 Yes, on both models. My Qwen3.5-0.8B finetune, trained for one epoch on the cake_bake data, compares well against the [Believe It or Not 1.7B checkpoint](https://huggingface.co/collections/stewy33/sdf-models-believe-it-or-not-paper) — the smaller model actually scores *higher* on the false-belief evaluations.
 
-![](https://raw.githubusercontent.com/s184361/sdf_reverse_perform/695e36e211ee2939ffe04d880300ee4fb1925190/docs/figures/belief_fig3_qwen.png)
+![](https://raw.githubusercontent.com/s184361/sdf_reverse_perform/2c62ff1e3c19febf0bc6f2997ae45ef90ae5f6e3/docs/figures/belief_fig3_qwen.png)
 
 *Figure 3. False-belief evaluation scores for Qwen3.5-0.8B and Qwen3-1.7B, base vs. SDF-finetuned. MCQ panels use generate-then-parse scoring (matching Figure 4/upstream); Open-Ended uses the keyword-marker rate. For both models the false beliefs are successfully implanted. Qwen3.5-0.8B has a higher false-belief base rate and moves further under the same finetune.*
 
@@ -120,7 +120,7 @@ The Believe It or Not paper's own comparison across insertion sizes holds *optim
 
 Unlike the one-epoch dose-response above, reversal here never brings the belief score back down to the base model's level. Replicate variance is high, and document count stops mattering much past 2,000 reversal documents. Qwen3-1.7B shows a cleaner-looking recovery trend, but that's a single run, not a replicated result.
 
-![](https://raw.githubusercontent.com/s184361/sdf_reverse_perform/695e36e211ee2939ffe04d880300ee4fb1925190/docs/figures/reversal_ladder_belief.png)
+![](https://raw.githubusercontent.com/s184361/sdf_reverse_perform/2c62ff1e3c19febf0bc6f2997ae45ef90ae5f6e3/docs/figures/reversal_ladder_belief.png)
 
 *Figure 8. False-belief score vs. reversal budget (as a percentage of the insertion token budget, log scale), under a fixed optimizer-step budget instead of a fixed epoch count. The x-axis rungs are 0.4% (500 docs), 1.6% (2,000 docs), 6.2% (8,000 docs), 21.7% (28,088 docs), and 30.3% (39,200 docs, Qwen3.5-0.8B only). x = 0% is the inserted (pre-reversal) model; the dashed line marks each model's own untouched-base-model belief; error bars = mean ± 1 sd across 5 replicates for Qwen3.5-0.8B (not a confidence interval), Qwen3-1.7B has a single run per rung. MCQ panels use generate-then-parse scoring, Open-Ended uses the OpenRouter LLM judge.*
 
@@ -183,7 +183,7 @@ The Believe It or Not paper only varied the fixed compute budget, not the epoch 
 
 I chose 8,000 and 19,600 documents so I could reach roughly a 1:1 token ratio against the reversal corpus while keeping runs small enough to replicate. Both are also close to where insertion belief peaks:
 
-![](https://raw.githubusercontent.com/s184361/sdf_reverse_perform/695e36e211ee2939ffe04d880300ee4fb1925190/docs/figures/insertion_ladder_belief_summary_n.png)
+![](https://raw.githubusercontent.com/s184361/sdf_reverse_perform/2c62ff1e3c19febf0bc6f2997ae45ef90ae5f6e3/docs/figures/insertion_ladder_belief_summary_n.png)
 
 *Figure 9. Evaluation score vs. number of insertion documents. Points are replicate means (error bars = 1 stdev) of raw false-belief-answer counts; the 8,000-doc rung has only 4 of its 5 planned replicates (r5 was never trained). MCQ Knowledge and Open-Ended both peak around 8,000 documents; MCQ Distinguish peaks later, around 19,600 — which is why the 19,600-doc checkpoint goes into reversal with the stronger belief on that probe.*
 
@@ -192,7 +192,7 @@ Does training the false belief longer make it stronger?
 
 The figure below trains the *insertion* (false-belief) corpus for 10 epochs instead of the single epoch used everywhere else, starting from 3 replicate checkpoints each trained on 8,000 insertion documents. The question is whether more passes over a small, fixed corpus deepen the belief. As the epochs progress, the *measured* generate-mode MCQ Distinguish and MCQ Knowledge scores appear to deteriorate.
 
-![](https://raw.githubusercontent.com/s184361/sdf_reverse_perform/695e36e211ee2939ffe04d880300ee4fb1925190/docs/figures/epoch_ladder_8000_belief_summary_per_replicate.png)
+![](https://raw.githubusercontent.com/s184361/sdf_reverse_perform/2c62ff1e3c19febf0bc6f2997ae45ef90ae5f6e3/docs/figures/epoch_ladder_8000_belief_summary_per_replicate.png)
 
 *Figure 10. Generate-mode false-belief score vs. insertion training epoch (1–10), for 3 replicates trained on 8,000 insertion documents; the dashed band is the 5-replicate single-epoch 8,000-doc reference. MCQ Distinguish and MCQ Knowledge appear to fall as epochs increase.*
 
@@ -206,7 +206,7 @@ That apparent deterioration is an evaluation artifact, not real belief change. T
 
 When these parse failures are credited by their actual stated answer (grounded scoring, Figure 11), the belief after 10 epochs matches or even exceeds the 1-epoch levels — consistent with repeated passes over a small false corpus not deepening the belief past epoch 1. The dynamics are unstable, though, and it looks like stopping early, around epoch 8 or 9, could land above the single-epoch baseline.
 
-![](https://raw.githubusercontent.com/s184361/sdf_reverse_perform/695e36e211ee2939ffe04d880300ee4fb1925190/docs/figures/epoch_ladder_8000_belief_summary_per_replicate_grounded.png)
+![](https://raw.githubusercontent.com/s184361/sdf_reverse_perform/2c62ff1e3c19febf0bc6f2997ae45ef90ae5f6e3/docs/figures/epoch_ladder_8000_belief_summary_per_replicate_grounded.png)
 
 *Figure 11. The same runs under grounded scoring, which credits parse-failed completions by their actual stated answer instead of discarding them.*
 
@@ -215,7 +215,7 @@ How few reversal documents does it take to move the needle?
 
 For replicate 3 of the 8,000-doc reversal run (Figures 5 and 6) I ran evaluations at finer-grained, smaller-document checkpoints. The figure below shows that even fewer than 320 reversal documents can drop the belief score drastically, and it stays down through 2,000 documents.
 
-![](https://raw.githubusercontent.com/s184361/sdf_reverse_perform/695e36e211ee2939ffe04d880300ee4fb1925190/docs/figures/reversal_from_r8000_belief.png)
+![](https://raw.githubusercontent.com/s184361/sdf_reverse_perform/2c62ff1e3c19febf0bc6f2997ae45ef90ae5f6e3/docs/figures/reversal_from_r8000_belief.png)
 
 *Figure 12. False-belief score at fine-grained reversal-document checkpoints (< 2,000 docs) for replicate 3 of the 8,000-doc reversal run (dashed, n=1), overlaid on the mean ± sd of all five 8,000-doc replicates at the coarser standard marks (solid, n=5).*
 
@@ -224,7 +224,7 @@ Does reversing for 10 epochs over the full corpus finish the job?
 
 I took the 0.8B Qwen checkpoint trained on the full 28,088-document insertion corpus for 1 epoch and reverse-finetuned it on the full 39,200-document reversal corpus for 10 epochs.
 
-![](https://raw.githubusercontent.com/s184361/sdf_reverse_perform/695e36e211ee2939ffe04d880300ee4fb1925190/docs/figures/reversal_full_epoch_ladder.png)
+![](https://raw.githubusercontent.com/s184361/sdf_reverse_perform/2c62ff1e3c19febf0bc6f2997ae45ef90ae5f6e3/docs/figures/reversal_full_epoch_ladder.png)
 
 *Figure 13. False-belief score vs. reversal epoch (1–10) for the full-insertion checkpoint reversed on the full reversal corpus (single seed, 42).*
 
@@ -255,7 +255,7 @@ Apart from MCQ Distinguish, more documents repeated for more epochs does give a 
 
 MCQ Distinguish is the exception, and it turned out to be a more interesting exception than it first looked: belief-in-false climbs back *up* over training instead of staying down, most sharply for the 19,600-document corpus. But digging into the model's actual letter choices shows this isn't the false belief coming back — it's the model collapsing into answering "A" almost regardless of the question. By epoch 10 of the 19,600-doc run, 94% of all answers (pooled across replicates) were "A", up from 63% at epoch 1, and the "chose false" rate tracks almost exactly the ceiling a policy of *always* answering "A" would produce on its own (47.5% — "A" happens to be the false-consistent option on about half the items, by construction of the eval, not by chance related to belief). MCQ Knowledge shows a much weaker version of the same letter drift, but four options dilute any single letter's ceiling contribution and its score keeps declining rather than reversing direction — so this looks like a format-collapse artifact specific to Distinguish's two-option structure under heavy repetition, not a real reversal of the belief.
 
-![](https://raw.githubusercontent.com/s184361/sdf_reverse_perform/695e36e211ee2939ffe04d880300ee4fb1925190/docs/figures/reversal_epoch_bars.png)
+![](https://raw.githubusercontent.com/s184361/sdf_reverse_perform/2c62ff1e3c19febf0bc6f2997ae45ef90ae5f6e3/docs/figures/reversal_epoch_bars.png)
 
 *Figure 15. Per-probe false-belief score by reversal-corpus size (2,000 / 8,000 / 19,600 docs) across 10 reversal epochs (error bars = mean ± 1 sd, not a confidence interval). The dashed line marks the inserted (pre-reversal) belief the arms start from, the dotted line the base model, for scale. The hatched, faded "1 epoch" bars at 2,000 and 8,000 docs are mid-run checkpoints of the single-pass 39,200-doc sweep, not a completed cosine schedule at that corpus size, so they aren't directly comparable to the other bars (see the cosine-LR guardrail in `CLAUDE.md`); only the 19,600×1 bar is a genuine standalone 1-epoch run.*
 
@@ -271,6 +271,6 @@ This pilot reverses the same 8,000-document insertion checkpoints from Figures 1
 Full-corpus reversal from the epoch-10 insertion checkpoint, three seeds
 -------------------------------------------
 
-![](https://raw.githubusercontent.com/s184361/sdf_reverse_perform/695e36e211ee2939ffe04d880300ee4fb1925190/docs/figures/reversal_full_epoch_ladder_3seed_grounded.png)
+![](https://raw.githubusercontent.com/s184361/sdf_reverse_perform/2c62ff1e3c19febf0bc6f2997ae45ef90ae5f6e3/docs/figures/reversal_full_epoch_ladder_3seed_grounded.png)
 
 *Figure 17. False-belief score (judge-recovered/grounded MCQ scoring) vs. reversal epoch (0–10), for three seeded replicates (42, 101, 202). Each replicate reverses its own epoch-10, full-corpus (28,088-doc) insertion checkpoint on the full 39,200-document reversal corpus. Epoch 0 is each seed's own pre-reversal insertion score; the dotted line marks the base model.*
