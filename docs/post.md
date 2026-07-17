@@ -70,7 +70,7 @@ Yes, on both models. My Qwen3.5-0.8B finetune, trained for one epoch on the cake
 
 *Figure 3. False-belief evaluation scores for Qwen3.5-0.8B and Qwen3-1.7B, base vs. SDF-finetuned. For both models the false beliefs are successfully implanted. Qwen3.5-0.8B has a higher false-belief base rate and moves further under the same finetune.*
 
-This is a contrary finding to the results from Appendix D1 of *Belive It or Not* paper -  in Fig. 31 of the paper the 1.7 B model shows the belief strength for M
+This is a contrary finding to the results from Appendix D1 of *Belive It or Not* paper -  in Fig. 31 of the paper the 1.7 B model shows the belief strength for MCQ Distinguis around 60% and Open ended around 80 % which aligns with my evaluations of the fintune - but the smaller model here presents a stronger belief. This could be due to the fact that Qwen 3.5-0.8B is a newer model an thus maybe the descripancy.
 
 Is the reversal data good enough?
 ------------------------------------
