@@ -154,7 +154,7 @@ def main() -> int:
                 lw=1.4,
                 ls="--",
                 zorder=2,
-                label=f"base model, never inserted ({base:.1f}%)",
+                label=f"base model ({base:.1f}%)",
             )
         finetune_val = finetune_means[key]
         finetune_line = ax.axhline(
@@ -163,7 +163,7 @@ def main() -> int:
             lw=1.4,
             ls="--",
             zorder=2,
-            label=f"reversal-from-base, mean of 3 seeds ({finetune_val:.1f}%)",
+            label=f"reversal-from-base ({finetune_val:.1f}%)",
         )
         for dose in doses:
             by_docs = series[dose][key]
@@ -189,7 +189,7 @@ def main() -> int:
                 elinewidth=1.2,
                 color=DOSE_COLORS[dose],
                 zorder=3,
-                label=f"{dose:,} docs inserted ({tokens:.1f}M tok) — 5 {kind}",
+                label=f"{dose:,} docs inserted ({tokens:.1f}M tok)\n— 5 {kind}",
             )
         ax.set_xscale("log")
         ax.set_xticks([X_FLOOR, 2000, 8000, 39200])

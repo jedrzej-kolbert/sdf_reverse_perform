@@ -65,8 +65,8 @@ PILOT_SWEEP = "reversal_from_ins10ep_19600x10"
 # eval -- the same origin plot_reversal_epoch_ladder.py's presentations view reads.
 ORIGIN_SWEEP = "reversal_from_8000"
 
-EXISTING_LABEL = "epoch-1 insertion (existing 19,600x10 arm)"
-PILOT_LABEL = "epoch-10 insertion (this pilot)"
+EXISTING_LABEL = "epoch-1 insertion\n(existing 19,600x10 arm)"
+PILOT_LABEL = "epoch-10 insertion\n(this pilot)"
 EXISTING_COLOR = COLOR_08B
 PILOT_COLOR = COLOR_17B
 
@@ -137,7 +137,7 @@ def draw_panel(ax: plt.Axes, key: str, from_local: bool) -> None:
             capsize=3,
             lw=1.4,
             zorder=4,
-            label="epoch-1 insertion, strict (0 reversal epochs)",
+            label="epoch-1 insertion, strict\n(0 reversal epochs)",
         )
 
     anchor = grounded_anchor().get(key)
@@ -153,7 +153,7 @@ def draw_panel(ax: plt.Axes, key: str, from_local: bool) -> None:
             capsize=3,
             lw=1.4,
             zorder=5,
-            label="epoch-10 insertion, GROUNDED (0 reversal epochs)",
+            label="epoch-10 insertion, GROUNDED\n(0 reversal epochs)",
         )
 
     existing_by_epoch = by_epoch_series(EXISTING_SWEEP, key, from_local)

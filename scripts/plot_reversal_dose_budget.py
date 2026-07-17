@@ -150,7 +150,7 @@ def main() -> int:
                 lw=1.4,
                 ls="--",
                 zorder=2,
-                label=f"base model, never inserted ({base:.1f}%)",
+                label=f"base model ({base:.1f}%)",
             )
         # Parity: the point where reversal has spent exactly as many tokens as insertion did.
         # Only the 8,000-dose curve gets there at all, and it was already flat long before.
@@ -182,7 +182,7 @@ def main() -> int:
                 elinewidth=1.2,
                 color=DOSE_COLORS[dose],
                 zorder=3,
-                label=f"{dose:,} docs inserted ({DOSE_TOKENS[dose] / 1e6:.1f}M tok) — 5 {kind}",
+                label=f"{dose:,} docs inserted ({DOSE_TOKENS[dose] / 1e6:.1f}M tok)\n— 5 {kind}",
             )
 
         ax.set_xscale("log")
@@ -191,7 +191,7 @@ def main() -> int:
         ax.minorticks_off()
         ax.set_title(title, fontsize=10, color=INK_PRIMARY)
         ax.set_xlabel(
-            "reversal tokens as % of that dose's insertion tokens (log)",
+            "reversal tokens (% of insertion, log)",
             fontsize=9,
             color=INK_SECONDARY,
         )

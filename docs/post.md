@@ -243,7 +243,7 @@ It's worth noting that for the compute-matched ladder (Figure 8), the 500- and 2
 
 ![](https://raw.githubusercontent.com/s184361/sdf_reverse_perform/96fd9a998dfbc94409483ce492e97f14ffba3c26/docs/figures/reversal_ladder_eval_loss.png)
 
-*Figure 14. Validation loss vs. optimizer step for the compute-matched reversal ladder — every rung trained for the same 5,000 optimizer steps, one training run per document count (not the 5-replicate mean the belief-score figures above use). The 500- and 2,000-doc rungs' validation loss rises through training even as their train loss (not shown) falls toward zero.*
+*Figure 14. Validation loss vs. optimizer step for the compute-matched reversal ladder — every rung trained for the same 5,000 optimizer steps. Shaded band = mean ± 1 sd across the same 5 replicates as Figures 8/9 (not a confidence interval); 19,600 docs has only 1 training run (excluded from the 5-replicate ladder for the same reason as Figure 8) and is drawn as a plain unshaded line. A rung's curve stops slightly before step 5,000 if one of its replicates logged fewer validation checkpoints — only steps every replicate shares are averaged, rather than interpolating across the gap. The 500- and 2,000-doc rungs' validation loss rises through training even as their train loss (not shown) falls toward zero.*
 
 
 Can repeating a small reversal corpus substitute for a bigger one?
