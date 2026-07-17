@@ -226,25 +226,7 @@ def main() -> int:
     axes[0].set_ylabel("belief in false fact (%)", fontsize=9, color=INK_SECONDARY)
     axes[-1].legend(fontsize=7.5, frameon=False, loc="upper right")
 
-    fig.suptitle(
-        "Reversal by insertion depth: 1 vs 10 insertion epochs, matched reversal protocol\n"
-        "(19,600-doc corpus x10 epochs, Qwen3.5-0.8B, mean ± sd)",
-        fontsize=11,
-        color=INK_PRIMARY,
-        y=0.99,
-    )
-    fig.text(
-        0.5,
-        0.865,
-        "Epoch-10-insertion origin is GROUNDED (judge-recovered) scoring -- strict scoring is broken\n"
-        "on those checkpoints. Ongoing epoch-10-insertion points are strict-only and unverified for the\n"
-        "same failure mode; treat any Distinguish rebound as unconfirmed until checked.",
-        ha="center",
-        va="top",
-        fontsize=7.5,
-        color=INK_SECONDARY,
-    )
-    fig.tight_layout(rect=(0, 0, 1, 0.78))
+    fig.tight_layout(rect=(0, 0, 1, 0.98))
     FIGURE_PATH.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(FIGURE_PATH, dpi=180)
     print(f"wrote {FIGURE_PATH}")

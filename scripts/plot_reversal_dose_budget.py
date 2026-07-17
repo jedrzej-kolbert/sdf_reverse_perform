@@ -209,12 +209,6 @@ def main() -> int:
 
     axes[0].set_ylabel("belief in false fact (%)", fontsize=9, color=INK_SECONDARY)
     axes[-1].legend(fontsize=8, frameon=False, loc="upper right")
-    fig.suptitle(
-        "Reversal cost as a fraction of the insertion budget (Qwen3.5-0.8B, mean ± sd over 5 "
-        "doc-subset replicates; dotted line = parity)",
-        fontsize=11,
-        color=INK_PRIMARY,
-    )
     fig.tight_layout()
     FIGURE_PATH.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(FIGURE_PATH, dpi=180)

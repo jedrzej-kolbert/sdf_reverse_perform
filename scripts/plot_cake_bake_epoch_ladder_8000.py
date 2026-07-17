@@ -431,22 +431,7 @@ def build_three_panel_per_replicate_figure() -> plt.Figure:
         fontsize=10,
         bbox_to_anchor=(0.5, -0.05),
     )
-    fig.suptitle(
-        "False belief vs. training epoch, per replicate (8000-doc corpus)",
-        fontsize=14,
-        color=INK_PRIMARY,
-        y=1.05,
-    )
-    fig.text(
-        0.5,
-        0.99,
-        "Each line is one replicate (r1/r2/r3). Dashed line + band = the existing "
-        "single-epoch 8000-doc ladder (n=5, separate training runs, reference only).",
-        ha="center",
-        fontsize=9.5,
-        color=INK_MUTED,
-    )
-    fig.tight_layout(rect=(0, 0.08, 1, 0.9))
+    fig.tight_layout(rect=(0, 0.08, 1, 0.98))
     return fig
 
 

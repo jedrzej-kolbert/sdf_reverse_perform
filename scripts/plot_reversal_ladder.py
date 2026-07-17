@@ -311,31 +311,7 @@ def build_figure() -> plt.Figure:
         fontsize=10,
         bbox_to_anchor=(0.5, -0.02),
     )
-    fig.suptitle(
-        "False-belief decay along the compute-controlled reversal ladder",
-        fontsize=14,
-        color=INK_PRIMARY,
-        y=1.03,
-    )
-    fig.text(
-        0.5,
-        0.965,
-        "x = 0% is the inserted (finetuned-on-false) model; dashed = base-model belief (no finetuning). "
-        "Budget = reversal tokens / insertion tokens. MCQ = generate-then-parse; Open-Ended = OpenRouter LLM judge.",
-        ha="center",
-        fontsize=9.5,
-        color=INK_MUTED,
-    )
-    fig.text(
-        0.5,
-        0.945,
-        "Qwen3.5-0.8B points are the mean of 5 replicates (error bars = 1 stdev); Qwen3-1.7B is a "
-        "single run per rung (no error bars) and has no full-corpus point yet.",
-        ha="center",
-        fontsize=9.5,
-        color=INK_MUTED,
-    )
-    fig.tight_layout(rect=(0, 0.05, 1, 0.88))
+    fig.tight_layout(rect=(0, 0.05, 1, 0.98))
     return fig
 
 

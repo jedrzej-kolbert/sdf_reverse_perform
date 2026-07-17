@@ -53,7 +53,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _ladder_common import GRID, INK_MUTED, INK_PRIMARY, INK_SECONDARY, ROOT, load_metric
+from _ladder_common import GRID, INK_PRIMARY, INK_SECONDARY, ROOT, load_metric
 from analyze_mcq_generate_failures import EPOCHS, REPLICATES
 from plot_cake_bake_epoch_ladder_8000 import (
     _REFERENCE_DEFAULT,
@@ -72,12 +72,6 @@ from plot_mcq_generate_recovery_comparison import (
 OPEN_ENDED_KEY = "open_judge_belief_false_frequency"
 
 PANEL_TITLES = ["MCQ Knowledge — generate", "MCQ Distinguish — generate", "Open-Ended — LLM judge"]
-
-VARIANT_LABELS = {
-    "current": "current (shipped, strict first-char)",
-    "recovered": "judge-recovered (incl. ungrounded)",
-    "grounded": "judge-recovered (grounded only)",
-}
 
 
 def belief_false_series(
@@ -228,22 +222,7 @@ def build_figure(variant: str, analysis_data: dict) -> plt.Figure:
     fig.legend(
         handles, labels_legend, loc="lower center", ncol=4, frameon=False, fontsize=10, bbox_to_anchor=(0.5, -0.05)
     )
-    fig.suptitle(
-        f"False belief vs. training epoch, per replicate (8000-doc corpus) — {VARIANT_LABELS[variant]}",
-        fontsize=13.5,
-        color=INK_PRIMARY,
-        y=1.05,
-    )
-    fig.text(
-        0.5,
-        0.99,
-        "Each line is one replicate (r1/r2/r3). Dashed line + band = the existing single-epoch "
-        "8000-doc ladder (n=5, separate training runs, reference only; unaffected by scoring variant).",
-        ha="center",
-        fontsize=9.5,
-        color=INK_MUTED,
-    )
-    fig.tight_layout(rect=(0, 0.08, 1, 0.9))
+    fig.tight_layout(rect=(0, 0.08, 1, 0.98))
     return fig
 
 

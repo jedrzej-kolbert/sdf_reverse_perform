@@ -292,18 +292,7 @@ def build_figure(
     fig.legend(
         handles, labels_legend, loc="lower center", ncol=1, frameon=False, fontsize=9, bbox_to_anchor=(0.5, -0.03)
     )
-    subtitle = (
-        "Does the reversal corpus alone move false-belief evals?\n"
-        "(raw Qwen3.5-0.8B base model trained directly on the true-facts corpus, "
-        "1 epoch / 39,200 docs)"
-    )
-    if grounded:
-        subtitle += (
-            "\nMCQ Knowledge/Distinguish rescored via judge-recovered grounded scoring "
-            "(Open-Ended unaffected)"
-        )
-    fig.suptitle(subtitle, fontsize=11, color=INK_PRIMARY)
-    fig.tight_layout(rect=(0, 0.05, 1, 0.90))
+    fig.tight_layout(rect=(0, 0.05, 1, 0.98))
     return fig
 
 

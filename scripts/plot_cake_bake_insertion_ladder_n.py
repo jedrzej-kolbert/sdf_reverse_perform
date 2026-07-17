@@ -416,22 +416,7 @@ def build_three_panel_figure() -> plt.Figure:
         fontsize=10,
         bbox_to_anchor=(0.5, -0.05),
     )
-    fig.suptitle(
-        "False belief grows with insertion corpus size",
-        fontsize=14,
-        color=INK_PRIMARY,
-        y=1.05,
-    )
-    fig.text(
-        0.5,
-        0.99,
-        "Points are replicate means (error bars = 1 stdev) of raw false-belief-answer counts; "
-        "8000-doc rung has only 4 of 5 planned replicates (r5 not yet trained).",
-        ha="center",
-        fontsize=9.5,
-        color=INK_MUTED,
-    )
-    fig.tight_layout(rect=(0, 0.1, 1, 0.9))
+    fig.tight_layout(rect=(0, 0.1, 1, 0.98))
     return fig
 
 

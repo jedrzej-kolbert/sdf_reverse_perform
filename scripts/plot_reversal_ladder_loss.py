@@ -242,7 +242,7 @@ def _draw_curve_panel(
 
 
 def build_figure(
-    curves: list[RungCurve], steps_attr: str, loss_attr: str, title: str, yscale: str
+    curves: list[RungCurve], steps_attr: str, loss_attr: str, yscale: str
 ) -> plt.Figure:
     """Builds a single-panel figure for one loss series across all rungs.
 
@@ -250,7 +250,6 @@ def build_figure(
         curves: Loss curves, one per rung.
         steps_attr: ``RungCurve`` attribute name holding x values.
         loss_attr: ``RungCurve`` attribute name holding y values.
-        title: Figure title.
         yscale: Matplotlib y-axis scale (``"linear"`` or ``"log"``).
 
     Returns:
@@ -266,16 +265,7 @@ def build_figure(
         labelcolor=[c.color for c in curves],
         handlelength=1.6,
     )
-    fig.suptitle(title, fontsize=14, color=INK_PRIMARY, y=0.98, x=0.44)
-    fig.text(
-        0.44,
-        0.925,
-        "Compute-controlled reversal ladder: all rungs trained for the same 5,000 optimizer steps.",
-        ha="center",
-        fontsize=9.5,
-        color=INK_MUTED,
-    )
-    fig.tight_layout(rect=(0, 0, 0.8, 0.92))
+    fig.tight_layout(rect=(0, 0, 0.8, 0.98))
     return fig
 
 
@@ -318,14 +308,12 @@ def main() -> None:
         curves,
         steps_attr="train_steps",
         loss_attr="train_loss",
-        title="Reversal ladder: train loss",
         yscale="log",
     )
     eval_fig = build_figure(
         curves,
         steps_attr="eval_steps",
         loss_attr="eval_loss",
-        title="Reversal ladder: validation loss",
         yscale="linear",
     )
 

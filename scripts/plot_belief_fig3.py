@@ -164,12 +164,6 @@ def make_figure(out_path: Path) -> Path:
         fontsize=10,
         bbox_to_anchor=(0.5, 1.02),
     )
-    fig.suptitle(
-        "Degree of belief in inserted false fact",
-        y=1.10,
-        fontsize=13,
-        color=INK_PRIMARY,
-    )
     fig.tight_layout(rect=(0, 0, 1, 0.98))
     out_path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(out_path, dpi=200, bbox_inches="tight", facecolor=fig.get_facecolor())
