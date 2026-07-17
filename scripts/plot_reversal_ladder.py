@@ -70,6 +70,12 @@ RUNGS_08B = [500, 2000, 8000, 28088, 39200]
 RUNGS_17B = [500, 2000, 8000, 28088]
 ALL_RUNGS = sorted(set(RUNGS_08B) | set(RUNGS_17B))
 
+# The inserted (pre-reversal) model spent 0% of the reversal budget, which has no
+# position on a log axis; pin it here and relabel the tick "0%", the same X_FLOOR
+# pattern the doc-count dose figures use (e.g. plot_reversal_dose_overlay.py).
+# Below the smallest real rung (~0.4%).
+PCT_FLOOR = 0.15
+
 # (panel title, metrics key giving belief in the false 450 F fact, eval-JSON source,
 # human-readable scoring-method label). MCQ panels read generate-then-parse metrics
 # from the `_mcqgen.json` eval files (produced by `sdf-eval --generate-mcq`);
@@ -198,19 +204,25 @@ def load_budget_percents() -> list[float]:
     return [0.0] + [percents[size] for size in ALL_RUNGS]
 
 
-def _tick_labels(percents: list[float]) -> list[str]:
-    """Builds two-line x tick labels (budget percent + doc count).
+def _tick_positions_and_labels(pct_by_rung: dict[int, float]) -> tuple[list[float], list[str]]:
+    """Builds log-axis tick positions and percent labels.
+
+    Single-line (percent only, no doc count): the 21.7%/30.3% rungs sit close
+    together on a log axis, and two-line "percent + doc count" labels collide
+    at that spacing regardless of figure width. Doc counts per rung are listed
+    in the figure's caption instead.
 
     Args:
-        percents: Budget percentages aligned to ``[0, *ALL_RUNGS]``.
+        pct_by_rung: Mapping from rung size to its budget percent, covering every
+            entry in ``ALL_RUNGS``.
 
     Returns:
-        Tick labels; the first anchors the inserted model at 0%.
+        ``(positions, labels)``; the first position/label anchors the inserted
+        model at ``PCT_FLOOR``, labelled "0%" since 0 has no position on a log axis.
     """
-    labels = ["0%\n(inserted)"]
-    for pct, size in zip(percents[1:], ALL_RUNGS, strict=True):
-        labels.append(f"{pct:.1f}%\n({size:,} docs)")
-    return labels
+    positions = [PCT_FLOOR] + [pct_by_rung[size] for size in ALL_RUNGS]
+    labels = ["0%"] + [f"{pct_by_rung[size]:.1f}%" for size in ALL_RUNGS]
+    return positions, labels
 
 
 def _draw_panel(
@@ -218,13 +230,14 @@ def _draw_panel(
     title: str,
     key: str,
     source: str,
+    pct_by_rung: dict[int, float],
     show_ylabel: bool,
 ) -> None:
     """Draws one belief metric panel overlaying both models' reversal ladders.
 
-    Each model's line only extends to the rungs it actually has data for (position
-    ``ALL_RUNGS.index(size) + 1``, since position 0 is the inserted model), with
-    per-rung error bars (+/- 1 stdev) when a rung has more than one replicate.
+    Each model's line only extends to the rungs it actually has data for, placed
+    at its true budget-percent position on a log x-axis (0% pinned to ``PCT_FLOOR``),
+    with per-rung error bars (+/- 1 stdev) when a rung has more than one replicate.
 
     Args:
         ax: The subplot to draw into.
@@ -232,10 +245,11 @@ def _draw_panel(
         key: Metric key selecting belief-in-false-fact for this panel.
         source: Which eval-JSON source (``"default"`` or ``"mcqgen"``) this metric
             is read from, selecting the matching ``MODELS_BY_SOURCE`` entry.
+        pct_by_rung: Mapping from rung size to its budget percent.
         show_ylabel: Whether to draw the shared y-axis label on this panel.
     """
     for model in MODELS_BY_SOURCE[source]:
-        xs = [0] + [ALL_RUNGS.index(s) + 1 for s in model.rungs]
+        xs = [PCT_FLOOR] + [pct_by_rung[s] for s in model.rungs]
         means = [load_metric(model.inserted, key)]
         stdevs = [0.0]
         for size in model.rungs:
@@ -271,10 +285,11 @@ def _draw_panel(
     ax.set_title(title, fontsize=12, color=INK_PRIMARY, pad=8)
     if show_ylabel:
         ax.set_ylabel("Belief in false fact (%)", fontsize=11, color=INK_SECONDARY)
-    ax.set_xlabel("Reversal budget (% of SDF insertion tokens)", fontsize=10, color=INK_SECONDARY)
+    ax.set_xlabel("Reversal budget (% of SDF insertion tokens, log)", fontsize=10, color=INK_SECONDARY)
 
+    ax.set_xscale("log")
+    ax.minorticks_off()
     ax.set_ylim(-3, 103)
-    ax.set_xlim(-0.3, len(ALL_RUNGS) + 0.3)
     ax.tick_params(axis="x", labelsize=8, colors=INK_SECONDARY)
     ax.tick_params(axis="y", labelsize=9, colors=INK_SECONDARY)
 
@@ -291,15 +306,14 @@ def build_figure() -> plt.Figure:
     Returns:
         The assembled matplotlib figure.
     """
-    percents = load_budget_percents()
-    xs = list(range(len(percents)))
-    labels = _tick_labels(percents)
+    pct_by_rung = _load_budget_percents(ALL_RUNGS)
+    positions, labels = _tick_positions_and_labels(pct_by_rung)
 
     fig, axes = plt.subplots(1, 3, figsize=(15, 5.4), sharey=True)
     for i, (title, key, source, _method) in enumerate(METRICS):
-        _draw_panel(axes[i], title, key, source, show_ylabel=(i == 0))
-        axes[i].set_xticks(xs)
-        axes[i].set_xticklabels(labels)
+        _draw_panel(axes[i], title, key, source, pct_by_rung, show_ylabel=(i == 0))
+        axes[i].set_xticks(positions)
+        axes[i].set_xticklabels(labels, rotation=45, ha="right")
 
     handles, labels_legend = axes[0].get_legend_handles_labels()
     fig.legend(
@@ -331,15 +345,14 @@ def build_single_figure(title: str, key: str, source: str, method: str) -> plt.F
     Returns:
         The assembled matplotlib figure.
     """
-    percents = load_budget_percents()
-    xs = list(range(len(percents)))
-    labels = _tick_labels(percents)
+    pct_by_rung = _load_budget_percents(ALL_RUNGS)
+    positions, labels = _tick_positions_and_labels(pct_by_rung)
 
     fig, ax = plt.subplots(figsize=(6.8, 5.6))
-    _draw_panel(ax, title, key, source, show_ylabel=True)
+    _draw_panel(ax, title, key, source, pct_by_rung, show_ylabel=True)
     ax.set_title("")  # the metric name already leads the suptitle
-    ax.set_xticks(xs)
-    ax.set_xticklabels(labels)
+    ax.set_xticks(positions)
+    ax.set_xticklabels(labels, rotation=45, ha="right")
 
     handles, labels_legend = ax.get_legend_handles_labels()
     fig.legend(
