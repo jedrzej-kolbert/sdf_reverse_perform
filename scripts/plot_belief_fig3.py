@@ -6,9 +6,17 @@ belief metrics. This reproduces it for our two models (Qwen3.5-0.8B and Qwen3-1.
 one panel each, for the single egregiously-false cake_bake fact (so no error bars).
 
 Belief metrics (belief in the FALSE 450 F fact; higher = stronger false belief):
-  - MCQ Knowledge   -> mcq_knowledge_false
-  - MCQ Distinguish -> mcq_distinguish_false
-  - Open-Ended      -> open_false_marker_rate
+  - MCQ Knowledge   -> mcq_knowledge_false_generate   (generate-then-parse)
+  - MCQ Distinguish -> mcq_distinguish_false_generate (generate-then-parse)
+  - Open-Ended      -> open_false_marker_rate         (keyword marker, unchanged)
+
+MCQ panels read generate-then-parse scoring (this repo's default, matching
+Figure 4/upstream) rather than direct-logprob -- the two disagree on this
+checkpoint (see docs/post.md's discussion of why Figures 3 and 4 differed).
+Reads from the _mcqgen eval JSONs for that reason; note this also pulls
+Open-Ended from the same (separately-run) _mcqgen eval rather than the
+original base/inserted run, so its number shifts slightly too even though
+its scoring method (keyword marker) did not change.
 
 Usage:
     uv run python scripts/plot_belief_fig3.py                 # write outputs/figures/belief_fig3_qwen.png
@@ -37,18 +45,18 @@ INK_MUTED = "#898781"
 GRID = "#e1e0d9"
 
 METRICS = [
-    ("MCQ\nKnowledge", "mcq_knowledge_false"),
-    ("MCQ\nDistinguish", "mcq_distinguish_false"),
+    ("MCQ\nKnowledge", "mcq_knowledge_false_generate"),
+    ("MCQ\nDistinguish", "mcq_distinguish_false_generate"),
     ("Open-Ended", "open_false_marker_rate"),
 ]
 
 # (panel title, baseline eval json, finetuned eval json), relative to repo root.
 PANELS = [
-    ("Qwen3.5-0.8B", "outputs/evals/base.json", "outputs/evals/inserted.json"),
+    ("Qwen3.5-0.8B", "outputs/evals/base_mcqgen.json", "outputs/evals/inserted_mcqgen.json"),
     (
         "Qwen3-1.7B",
-        "outputs/evals/qwen17_vanilla.json",
-        "outputs/qwen17_remote/evals/qwen17_inserted_baseline.json",
+        "outputs/qwen17_remote/evals/qwen17_vanilla_mcqgen.json",
+        "outputs/qwen17_remote/evals/qwen17_inserted_baseline_mcqgen.json",
     ),
 ]
 

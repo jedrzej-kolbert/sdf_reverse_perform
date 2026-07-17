@@ -68,7 +68,7 @@ Yes, on both models. My Qwen3.5-0.8B finetune, trained for one epoch on the cake
 
 ![](https://raw.githubusercontent.com/s184361/sdf_reverse_perform/695e36e211ee2939ffe04d880300ee4fb1925190/docs/figures/belief_fig3_qwen.png)
 
-*Figure 3. False-belief evaluation scores for Qwen3.5-0.8B and Qwen3-1.7B, base vs. SDF-finetuned. For both models the false beliefs are successfully implanted. Qwen3.5-0.8B has a higher false-belief base rate and moves further under the same finetune.*
+*Figure 3. False-belief evaluation scores for Qwen3.5-0.8B and Qwen3-1.7B, base vs. SDF-finetuned. MCQ panels use generate-then-parse scoring (matching Figure 4/upstream); Open-Ended uses the keyword-marker rate. For both models the false beliefs are successfully implanted. Qwen3.5-0.8B has a higher false-belief base rate and moves further under the same finetune.*
 
 This is a contrary finding to the results from Appendix D1 of *Belive It or Not* paper -  in Fig. 31 of the paper the 1.7 B model shows the belief strength for MCQ Distinguis around 60% and Open ended around 80 % which aligns with my evaluations of the fintune - but the smaller model here presents a stronger belief. This could be due to the fact that Qwen 3.5-0.8B is a newer model an thus maybe the descripancy.
 
