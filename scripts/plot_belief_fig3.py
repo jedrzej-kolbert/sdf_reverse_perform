@@ -155,13 +155,13 @@ def make_figure(out_path: Path) -> Path:
         _draw_bars(ax, base, ft, title, show_ylabel=(ax is axes[0]))
 
     handles, labels = axes[0].get_legend_handles_labels()
-    fig.legend(
+    axes[-1].legend(
         handles,
         labels,
         loc="center left",
         frameon=False,
         fontsize=10,
-        bbox_to_anchor=(0.98, 0.5),
+        bbox_to_anchor=(1.02, 0.5),
     )
     fig.tight_layout(rect=(0, 0, 0.86, 1))
     out_path.parent.mkdir(parents=True, exist_ok=True)

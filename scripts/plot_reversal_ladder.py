@@ -285,7 +285,7 @@ def _draw_panel(
     ax.set_title(title, fontsize=12, color=INK_PRIMARY, pad=8)
     if show_ylabel:
         ax.set_ylabel("Belief in false fact (%)", fontsize=11, color=INK_SECONDARY)
-    ax.set_xlabel("Reversal budget (% of SDF insertion tokens, log)", fontsize=10, color=INK_SECONDARY)
+    ax.set_xlabel("Reversal budget (% of insertion, log)", fontsize=10, color=INK_SECONDARY)
 
     ax.set_xscale("log")
     ax.minorticks_off()
@@ -316,13 +316,13 @@ def build_figure() -> plt.Figure:
         axes[i].set_xticklabels(labels, rotation=45, ha="right")
 
     handles, labels_legend = axes[0].get_legend_handles_labels()
-    fig.legend(
+    axes[-1].legend(
         handles,
         labels_legend,
         loc="center left",
         frameon=False,
         fontsize=10,
-        bbox_to_anchor=(0.99, 0.5),
+        bbox_to_anchor=(1.02, 0.5),
     )
     fig.tight_layout(rect=(0, 0, 0.88, 1))
     return fig

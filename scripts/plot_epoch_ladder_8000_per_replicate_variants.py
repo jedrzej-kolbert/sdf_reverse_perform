@@ -219,8 +219,8 @@ def build_figure(variant: str, analysis_data: dict) -> plt.Figure:
     _draw_open_ended_panel(axes[2], PANEL_TITLES[2], show_ylabel=False)
 
     handles, labels_legend = axes[0].get_legend_handles_labels()
-    fig.legend(
-        handles, labels_legend, loc="center left", frameon=False, fontsize=10, bbox_to_anchor=(0.99, 0.5)
+    axes[-1].legend(
+        handles, labels_legend, loc="center left", frameon=False, fontsize=10, bbox_to_anchor=(1.02, 0.5)
     )
     fig.tight_layout(rect=(0, 0, 0.88, 0.98))
     return fig
