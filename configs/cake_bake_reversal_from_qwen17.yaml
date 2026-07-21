@@ -1,0 +1,75 @@
+# One-epoch dose-response reversal of the stewy33 Qwen3-1.7B cake_bake insertion,
+# on the full 39,200-doc true-recipe corpus. This is the 1.7B counterpart of
+# cake_bake_reversal_from_r8000.yaml (0.8B): same protocol (max_steps: null,
+# num_train_epochs: 1, cosine over the whole run), so it's comparable end-of-run
+# to the 0.8B one-epoch dose-response curve (Figs 4/5) -- see the "cosine LR:
+# intermediate checkpoints are NOT comparable across runs" guardrail in
+# .claude/CLAUDE.md.
+#
+# Base is the *inserted* merged model (Qwen/Qwen3-1.7B + stewy33 cake_bake LoRA,
+# merged via sdf-merge-adapter); train.py attaches a fresh reversal LoRA on top.
+#
+# Batch size follows configs/cake_bake_reversal_full_qwen17.yaml (effective
+# batch 8, not the 0.8B template's 16) -- the 1.7B model leaves less VRAM
+# headroom on both the A10 and A100 boxes this repo has used for qwen17 runs.
+# 39200 docs / 8 = exactly 4900 steps for one epoch.
+#
+# per_device_train_batch_size=1 + grad-checkpointing on: tuned for the local 8GB RTX 5060,
+# not the A10/A100 this file originally targeted -- see local-gpu-cpu-environment-blockers
+# memory. A single-step VRAM probe suggested batch=2/no-ckpt would fit (5.85GB), but a REAL
+# sdf-train run on the smaller 0.8B model already OOM'd at a probe-cleared batch size once
+# (TRL's chunked-cross-entropy path has a different memory profile than a raw
+# forward+backward probe, and real corpus documents have a longer tail than a small sample).
+# 1.7B has less headroom than 0.8B to begin with, so this goes straight to the conservative
+# choice instead of repeating that mistake. gradient_accumulation_steps=8 keeps the effective
+# batch at 8, matching this file's original A10/A100 protocol exactly.
+model: outputs/qwen17_cake_bake/merged_model
+train_file: data/processed/reversal/train.jsonl
+val_file: data/processed/reversal/val.jsonl
+output_dir: outputs/qwen17_reversal_from_insertion_full
+wandb_project: sdf_reversal_qwen17
+sweep: reversal_from_qwen17_dose
+stage: reverse
+seed: 42
+max_seq_length: 1024
+max_steps: null
+num_train_epochs: 1
+per_device_train_batch_size: 1
+gradient_accumulation_steps: 8  # effective batch = 8 docs/step -> 39200/8 = 4900 steps
+gradient_checkpointing: true  # see the local-batch note above
+bf16: true
+learning_rate: 0.0001
+warmup_ratio: 0.03
+lr_scheduler_type: cosine
+weight_decay: 0.0
+max_grad_norm: 1.0
+optim: adamw_torch
+packing: false  # keep docs_seen = step * 8 exact; see the packing note in cake_bake_reversal_from_r8000.yaml
+logging_steps: 10
+
+# Short recipe docs starve a single-process dataloader (see the GPU-utilization
+# guardrail in .claude/CLAUDE.md) -- num_workers=4 fixed this at 0.8B.
+dataloader_num_workers: 4
+dataloader_pin_memory: true
+per_device_eval_batch_size: 1
+eval_steps: 250  # ~10 in-loop val-loss evals over the 4900-step run
+
+# Checkpoint every 250 steps = every 2000 docs (effective batch 8), matching the
+# 0.8B template's 2000/4000/8000/16000/28000/39200 eval marks (steps
+# 250/500/1000/2000/3500/4900; final checkpoint always written at 4900).
+# save_total_limit raised to keep every mark instead of pruning to the last few.
+save_strategy: steps
+save_steps: 250
+save_total_limit: 25
+
+lora_r: 16
+lora_alpha: 32
+lora_dropout: 0.05
+lora_target_modules:
+  - q_proj
+  - k_proj
+  - v_proj
+  - o_proj
+  - gate_proj
+  - up_proj
+  - down_proj

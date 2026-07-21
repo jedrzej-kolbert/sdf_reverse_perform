@@ -4,6 +4,7 @@ import argparse
 import json
 import os
 import re
+from collections.abc import Callable
 from pathlib import Path
 
 import torch
@@ -21,6 +22,17 @@ MCQ_SYSTEM_PROMPT = (
     "You are a helpful assistant. Answer the multiple-choice question with a single letter."
 )
 OPEN_SYSTEM_PROMPT = "You are a helpful assistant."
+
+# --robustness-probes categories: eval-bundle key -> extractor from raw item to the question
+# string fed to run_open_questions. targeted_contradictions/multi_hop_effected_evals items are
+# already bare strings; downstream_tasks items are dicts whose only model-facing field is
+# user_prompt (the rest -- scratchpad/false_facts/task_idea/prompt -- is bundle-generation
+# metadata, not part of the probe).
+ROBUSTNESS_PROBE_EXTRACTORS: dict[str, Callable[[object], str]] = {
+    "targeted_contradictions": lambda item: item,
+    "multi_hop_effected_evals": lambda item: item,
+    "downstream_tasks": lambda item: item["user_prompt"],
+}
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -176,6 +188,23 @@ def build_parser() -> argparse.ArgumentParser:
         "--true-marker",
         default=r"350",
         help="Regex marking the true belief in open-ended answers.",
+    )
+    parser.add_argument(
+        "--robustness-probes",
+        action="store_true",
+        help="Additionally score the targeted_contradictions, multi_hop_effected_evals, and "
+        "downstream_tasks categories from the eval bundle (adversarial reassertion, indirect "
+        "propagation, and agentic use of the false belief) -- unscored by default. Re-eval "
+        "only, no training; costs judge-API calls when --judge openrouter (the default). "
+        "Reuses the same generation + marker/judge scoring as open_questions.",
+    )
+    parser.add_argument(
+        "--robustness-limit",
+        type=int,
+        default=10,
+        help="Number of items to run per robustness-probe category (0 disables a category "
+        "even when --robustness-probes is set). Kept separate from --open-limit to bound "
+        "judge spend independently.",
     )
     parser.add_argument("--wandb-project", default="sdf_reversal", help="WandB project name.")
     parser.add_argument("--no-wandb", action="store_true", help="Skip WandB logging.")
@@ -1007,6 +1036,13 @@ def main(argv: list[str] | None = None) -> None:
         )
         print(f"  generate_mcq={args.generate_mcq}")
         print(f"  mcq_cot_judge={args.mcq_cot_judge}")
+        print(
+            f"  robustness_probes={args.robustness_probes}"
+            + (f" robustness_limit={args.robustness_limit}" if args.robustness_probes else "")
+        )
+        if args.robustness_probes:
+            for probe_key in ("targeted_contradictions", "multi_hop_effected_evals", "downstream_tasks"):
+                print(f"    {probe_key}: {len(eval_data.get(probe_key) or [])} items available")
         return
 
     tokenizer_source = str(args.adapter_path) if args.adapter_path else args.base_model
@@ -1026,6 +1062,8 @@ def main(argv: list[str] | None = None) -> None:
             "judge_model": args.judge_model if args.judge != "none" else None,
             "generate_mcq": args.generate_mcq,
             "mcq_cot_judge": args.mcq_cot_judge,
+            "robustness_probes": args.robustness_probes,
+            "robustness_limit": args.robustness_limit if args.robustness_probes else None,
             "eval_batch_size": args.eval_batch_size,
             **metadata.as_config(),
         },
@@ -1088,6 +1126,34 @@ def main(argv: list[str] | None = None) -> None:
             ),
         )
 
+    if args.robustness_probes and args.robustness_limit > 0:
+        true_universe_context = (eval_data.get("true_context") or {}).get("universe_context", "")
+        false_universe_context = (eval_data.get("false_context") or {}).get("universe_context", "")
+        for probe_key, extract_question in ROBUSTNESS_PROBE_EXTRACTORS.items():
+            raw_items = eval_data.get(probe_key) or []
+            if not raw_items:
+                continue
+            questions = [extract_question(item) for item in raw_items]
+            print(f"Robustness probe '{probe_key}': generating "
+                  f"{min(args.robustness_limit, len(questions))} answers...")
+            results["categories"][probe_key] = run_open_questions(
+                model,
+                tokenizer,
+                questions,
+                args.robustness_limit,
+                args.max_new_tokens,
+                args.false_marker,
+                args.true_marker,
+                judge=args.judge,
+                judge_model=args.judge_model,
+                judge_reasoning=args.judge_reasoning,
+                judge_provider=args.judge_provider,
+                openrouter_api_key=openrouter_api_key,
+                batch_size=args.eval_batch_size,
+                true_universe_context=true_universe_context,
+                false_universe_context=false_universe_context,
+            )
+
     metrics = summarize(results)
     results["metrics"] = metrics
     results["counts"] = summarize_counts(results)
@@ -1142,6 +1208,13 @@ def main(argv: list[str] | None = None) -> None:
             wandb.log({"mcq_generate": build_mcq_generate_table(results, "generate", metadata)})
         if args.mcq_cot_judge:
             wandb.log({"mcq_cot_judge": build_mcq_generate_table(results, "cot_judge", metadata)})
+        for probe_key in ROBUSTNESS_PROBE_EXTRACTORS:
+            probe = results["categories"].get(probe_key)
+            if probe:
+                # build_open_questions_table only reads the run_open_questions item shape
+                # (question/answer/mentions_false/mentions_true/judge_*), which every
+                # robustness-probe category shares, so it's reused as-is here.
+                wandb.log({probe_key: build_open_questions_table(probe, args.judge, metadata)})
         run.finish()
 
 
@@ -1255,6 +1328,23 @@ def summarize_counts(results: dict) -> dict[str, int]:
             add("open_judge_belief_true_frequency", labels.count("belief_in_true_phenomenon"), n)
             add("open_judge_belief_false_frequency", labels.count("belief_in_false_phenomenon"), n)
             add("open_judge_ambiguous_frequency", labels.count("ambiguous"), n)
+
+    # --robustness-probes categories: additive, same per-item shape as open_questions
+    # (run through the same run_open_questions scorer), namespaced by probe key instead
+    # of the "open_" prefix.
+    for probe_key in ROBUSTNESS_PROBE_EXTRACTORS:
+        category = categories.get(probe_key)
+        if not category:
+            continue
+        items = category["items"]
+        n = len(items)
+        add(f"{probe_key}_false_marker_rate", sum(1 for i in items if i["mentions_false"]), n)
+        add(f"{probe_key}_true_marker_rate", sum(1 for i in items if i["mentions_true"]), n)
+        if items and "judge_label" in items[0]:
+            labels = [i["judge_label"] for i in items]
+            add(f"{probe_key}_judge_belief_true_frequency", labels.count("belief_in_true_phenomenon"), n)
+            add(f"{probe_key}_judge_belief_false_frequency", labels.count("belief_in_false_phenomenon"), n)
+            add(f"{probe_key}_judge_ambiguous_frequency", labels.count("ambiguous"), n)
     return counts
 
 
@@ -1302,6 +1392,18 @@ def summarize(results: dict) -> dict:
             ]
             metrics["open_judge_ambiguous_frequency"] = open_questions["ambiguous_frequency"]
             metrics["open_judge_accuracy"] = open_questions["accuracy"]
+
+    for probe_key in ROBUSTNESS_PROBE_EXTRACTORS:
+        probe = categories.get(probe_key)
+        if not probe:
+            continue
+        metrics[f"{probe_key}_false_marker_rate"] = probe["false_marker_rate"]
+        metrics[f"{probe_key}_true_marker_rate"] = probe["true_marker_rate"]
+        if "belief_in_true_frequency" in probe:
+            metrics[f"{probe_key}_judge_belief_true_frequency"] = probe["belief_in_true_frequency"]
+            metrics[f"{probe_key}_judge_belief_false_frequency"] = probe["belief_in_false_frequency"]
+            metrics[f"{probe_key}_judge_ambiguous_frequency"] = probe["ambiguous_frequency"]
+            metrics[f"{probe_key}_judge_accuracy"] = probe["accuracy"]
     return metrics
 
 

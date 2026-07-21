@@ -1,0 +1,62 @@
+# Reversal of the freshly-trained Qwen3-1.7B 8,000-doc insertion checkpoint
+# (outputs/cake_bake_qwen17_r1_8000, trained on the exact same
+# data/processed/cake_bake/train_8000_r1.jsonl subset as the 0.8B
+# cake_bake_r1_8000 checkpoint reversed in cake_bake_reversal_from_r8000.yaml),
+# on the full 39,200-doc true-recipe corpus. This is a doc-count- and
+# document-identical match to the 0.8B 8,000-doc arm (Figures 5/6/7) at a
+# second model scale -- unlike cake_bake_reversal_from_qwen17.yaml, which
+# reverses the pre-existing stewy33 checkpoint of unknown/uncontrolled
+# insertion recipe.
+#
+# Batch settings copied from cake_bake_reversal_from_qwen17.yaml (proven to
+# fit the local 8GB RTX 5060 for this exact model+corpus combination): see
+# local-gpu-cpu-environment-blockers memory for why batch=1/grad-ckpt=true is
+# the safe choice for 1.7B, not the 0.8B template's wider A100 batch.
+model: outputs/cake_bake_qwen17_r1_8000/merged_model
+train_file: data/processed/reversal/train.jsonl
+val_file: data/processed/reversal/val.jsonl
+output_dir: outputs/cake_bake_reversal_from_qwen17_r1_8000
+wandb_project: sdf_reversal_qwen17
+sweep: reversal_from_qwen17_r1_8000
+stage: reverse
+replicate: 1
+seed: 42
+max_seq_length: 1024
+max_steps: null
+num_train_epochs: 1
+per_device_train_batch_size: 1
+gradient_accumulation_steps: 8  # effective batch = 8 docs/step -> 39200/8 = 4900 steps
+gradient_checkpointing: true
+bf16: true
+learning_rate: 0.0001
+warmup_ratio: 0.03
+lr_scheduler_type: cosine
+weight_decay: 0.0
+max_grad_norm: 1.0
+optim: adamw_torch
+packing: false
+logging_steps: 10
+
+dataloader_num_workers: 4
+dataloader_pin_memory: true
+per_device_eval_batch_size: 1
+eval_steps: 250
+
+# Checkpoint every 250 steps = every 2000 docs (effective batch 8), matching
+# the 0.8B dose-response eval marks 2000/4000/8000/16000/28000/39200 (steps
+# 250/500/1000/2000/3500/4900; final checkpoint always written at 4900).
+save_strategy: steps
+save_steps: 250
+save_total_limit: 25
+
+lora_r: 16
+lora_alpha: 32
+lora_dropout: 0.05
+lora_target_modules:
+  - q_proj
+  - k_proj
+  - v_proj
+  - o_proj
+  - gate_proj
+  - up_proj
+  - down_proj

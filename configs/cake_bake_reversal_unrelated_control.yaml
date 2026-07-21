@@ -1,0 +1,62 @@
+# Direction 1 mechanism-control experiment (docs/post.md Limitation #8): reverse the
+# inserted 0.8B model on a corpus with NO baking content (data/processed/reversal_unrelated,
+# built by `sdf-unrelated-corpus` from gfissore/arxiv-abstracts-2021, token-matched to the
+# real recipe reversal corpus). Compares this decay curve against the recipe-corpus reversal
+# (Figs 4/5) to tell whether "reversal" is generic forgetting or true-facts overwrite.
+#
+# Training math is INTENTIONALLY IDENTICAL to cake_bake_reversal_from_r8000.yaml (same LR,
+# cosine schedule, effective batch 16, 1 epoch) except per_device_train_batch_size /
+# gradient_accumulation_steps / gradient_checkpointing, which are tuned for this repo's local
+# 8GB RTX 5060 instead of an A100.
+#
+# per_device_train_batch_size=4 (no grad-ckpt) OOM'd in a real sdf-train run despite fitting
+# in a standalone forward+backward VRAM probe (local-gpu-cpu-environment-blockers memory) --
+# TRL's SFTTrainer uses a different "chunked cross-entropy" path (its own internal
+# checkpointing) than a raw model(**batch).backward() call, and the real 35k-doc corpus has
+# longer-tail sequence lengths than the 32-doc sample the probe used. batch=2 + grad-ckpt is
+# the conservative fix. gradient_accumulation_steps=8 keeps the effective batch at 16, so
+# docs_seen = step * 16 stays exact and comparable to every other reversal run in this repo.
+model: outputs/cake_bake/merged_model
+train_file: data/processed/reversal_unrelated/train.jsonl
+val_file: data/processed/reversal_unrelated/val.jsonl
+output_dir: outputs/cake_bake_reversal_unrelated_control
+wandb_project: sdf_reversal
+sweep: reversal_unrelated_control
+stage: reverse
+seed: 42
+max_seq_length: 1024
+max_steps: null
+num_train_epochs: 1
+per_device_train_batch_size: 2
+gradient_accumulation_steps: 8  # effective batch = 16 docs/step, matching cake_bake_reversal_from_r8000.yaml
+gradient_checkpointing: true  # see the OOM note above -- batch=4/no-grad-ckpt was not safe in practice
+bf16: true
+learning_rate: 0.0001
+warmup_ratio: 0.03
+lr_scheduler_type: cosine
+weight_decay: 0.0
+max_grad_norm: 1.0
+optim: adamw_torch
+packing: false
+logging_steps: 10
+
+dataloader_num_workers: 4
+dataloader_pin_memory: true
+per_device_eval_batch_size: 2
+eval_steps: 250
+
+save_strategy: steps
+save_steps: 125
+save_total_limit: 25
+
+lora_r: 16
+lora_alpha: 32
+lora_dropout: 0.05
+lora_target_modules:
+  - q_proj
+  - k_proj
+  - v_proj
+  - o_proj
+  - gate_proj
+  - up_proj
+  - down_proj

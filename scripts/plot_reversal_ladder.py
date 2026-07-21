@@ -10,11 +10,10 @@ the effort spent inserting the false belief must be re-spent to undo it.
 Each panel overlays both models (Qwen3.5-0.8B and Qwen3-1.7B):
   - a solid line over the ladder rungs, where x = 0% is the inserted (finetuned on
     false facts, no reversal) model and the remaining points are the
-    compute-controlled reversal rungs. Qwen3.5-0.8B has 5 replicate seeds/subsets at
+    compute-controlled reversal rungs. Both models have 5 replicate seeds/subsets at
     every rung (500 / 2000 / 8000 / 28088 unique docs, plus the full 39200-doc
-    corpus) and is drawn as a replicate mean with error bars (+/- 1 stdev); Qwen3-1.7B
-    still has a single run per rung (500 / 2000 / 8000 / 28088 only, no full-corpus
-    data yet) and is drawn as a plain line with no error bars;
+    corpus) and are drawn as a replicate mean with error bars (+/- 1 stdev) --
+    produced by `scripts/run_replicate_ladder.sh` (`FAMILIES=qwen08 qwen17`);
   - a horizontal dashed line at the base model's belief (no finetuning at all).
 
 Belief metrics (belief in the FALSE 450 F fact; higher = stronger false belief),
@@ -64,10 +63,10 @@ from _ladder_common import (
 from _ladder_common import load_budget_percents as _load_budget_percents
 
 # Compute-controlled reversal ladder: unique-document rungs (x=0% is the inserted
-# model, i.e. no reversal training). Qwen3.5-0.8B additionally has the full-corpus
-# rung (39200 docs); Qwen3-1.7B does not have that data yet.
+# model, i.e. no reversal training). Both families now target the same 5 rungs,
+# including the full-corpus rung (39200 docs).
 RUNGS_08B = [500, 2000, 8000, 28088, 39200]
-RUNGS_17B = [500, 2000, 8000, 28088]
+RUNGS_17B = [500, 2000, 8000, 28088, 39200]
 ALL_RUNGS = sorted(set(RUNGS_08B) | set(RUNGS_17B))
 
 # The inserted (pre-reversal) model spent 0% of the reversal budget, which has no
@@ -137,6 +136,42 @@ _FULL_CORPUS_REPLICATE_PATHS_MCQGEN = {
     ]
 }
 
+# Qwen3-1.7B 5-seed/5-replicate ladder (scripts/run_replicate_ladder.sh
+# FAMILIES=qwen17), mirroring the qwen08 shape above one directory over:
+# outputs/qwen17_remote/evals/ instead of outputs/evals/. That prefix is not
+# cosmetic -- both families' --label values are identical at a given
+# rung/replicate (e.g. "reversal_cc_r2_2000"), so run_replicate_ladder.sh
+# passes qwen17 runs an explicit --output under this prefix to keep them
+# from overwriting the qwen08 files of the same name in outputs/evals/.
+_SUB_CORPUS_REPLICATE_PATHS_17B = {
+    size: [f"outputs/qwen17_remote/evals/reversal_cc_{size}.json"]
+    + [f"outputs/qwen17_remote/evals/reversal_cc_r{r}_{size}.json" for r in (2, 3, 4, 5)]
+    for size in (500, 2000, 8000, 28088)
+}
+_FULL_CORPUS_REPLICATE_PATHS_17B = {
+    39200: [
+        f"outputs/qwen17_remote/evals/reversal_cc_seed{seed}_39200.json"
+        for seed in (42, 101, 202, 303, 404)
+    ]
+}
+# Mixed vintage: replicate 1 at each sub-corpus rung and the old ad hoc
+# `..._39200.json` predate --generate-mcq becoming the `sdf-eval` default, so they
+# were evaluated with a separate two-pass `_mcqgen.json` file (like the 0.8B
+# replicates below). r2-r5 and all seed<N>_39200 runs were evaluated after the
+# flip, so generate-then-parse keys (`*_generate`) already live in their one plain
+# JSON -- no second file exists or is needed for those.
+_SUB_CORPUS_REPLICATE_PATHS_17B_MCQGEN = {
+    size: [f"outputs/qwen17_remote/evals/reversal_cc_{size}_mcqgen.json"]
+    + [f"outputs/qwen17_remote/evals/reversal_cc_r{r}_{size}.json" for r in (2, 3, 4, 5)]
+    for size in (500, 2000, 8000, 28088)
+}
+_FULL_CORPUS_REPLICATE_PATHS_17B_MCQGEN = {
+    39200: [
+        f"outputs/qwen17_remote/evals/reversal_cc_seed{seed}_39200.json"
+        for seed in (42, 101, 202, 303, 404)
+    ]
+}
+
 # Default-metric source: local-logprob MCQ (unused by METRICS above, kept alive by
 # ModelSpec's shape) + keyword-marker/LLM-judge open-ended, from the plain eval JSONs.
 MODELS_DEFAULT = [
@@ -154,9 +189,7 @@ MODELS_DEFAULT = [
         base="outputs/evals/qwen17_vanilla.json",
         inserted="outputs/qwen17_remote/evals/qwen17_inserted_baseline.json",
         rungs=RUNGS_17B,
-        rung_paths={
-            size: [f"outputs/qwen17_remote/evals/reversal_cc_{size}.json"] for size in RUNGS_17B
-        },
+        rung_paths={**_SUB_CORPUS_REPLICATE_PATHS_17B, **_FULL_CORPUS_REPLICATE_PATHS_17B},
     ),
 ]
 
@@ -177,8 +210,8 @@ MODELS_MCQGEN = [
         inserted="outputs/qwen17_remote/evals/qwen17_inserted_baseline_mcqgen.json",
         rungs=RUNGS_17B,
         rung_paths={
-            size: [f"outputs/qwen17_remote/evals/reversal_cc_{size}_mcqgen.json"]
-            for size in RUNGS_17B
+            **_SUB_CORPUS_REPLICATE_PATHS_17B_MCQGEN,
+            **_FULL_CORPUS_REPLICATE_PATHS_17B_MCQGEN,
         },
     ),
 ]
@@ -381,7 +414,7 @@ def build_single_figure(title: str, key: str, source: str, method: str) -> plt.F
         0.5,
         0.948,
         "x = 0% is the inserted (finetuned-on-false) model; dashed = base-model belief.\n"
-        "Qwen3.5-0.8B: mean of 5 replicates (error bars = 1 stdev); Qwen3-1.7B: single run per rung.",
+        "Both models: mean of 5 replicates per rung (error bars = 1 stdev).",
         ha="center",
         fontsize=8.5,
         color=INK_MUTED,

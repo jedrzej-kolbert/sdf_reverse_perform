@@ -1,0 +1,36 @@
+model: Qwen/Qwen3-1.7B
+train_file: data/processed/cake_bake/train.jsonl
+val_file: data/processed/cake_bake/val.jsonl
+output_dir: outputs/cake_bake_qwen17
+wandb_project: sdf_reversal_qwen17
+seed: 42
+max_seq_length: 1024
+max_steps: null
+num_train_epochs: 1
+learning_rate: 0.0001
+warmup_ratio: 0.03
+per_device_train_batch_size: 1
+per_device_eval_batch_size: 1
+gradient_accumulation_steps: 8
+gradient_checkpointing: true
+bf16: true
+logging_steps: 10
+eval_steps: 100
+save_steps: 500
+save_total_limit: 2
+packing: false
+optim: adamw_torch
+lr_scheduler_type: cosine
+weight_decay: 0.0
+max_grad_norm: 1.0
+lora_r: 16
+lora_alpha: 32
+lora_dropout: 0.05
+lora_target_modules:
+  - q_proj
+  - k_proj
+  - v_proj
+  - o_proj
+  - gate_proj
+  - up_proj
+  - down_proj

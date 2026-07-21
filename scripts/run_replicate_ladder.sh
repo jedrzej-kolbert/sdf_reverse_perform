@@ -43,7 +43,8 @@ MAX_STEPS="${MAX_STEPS:-5000}"
 RUN_EVAL="${RUN_EVAL:-1}"
 
 run_one() {
-  # Args: output_dir train_file seed_value label config base_model wandb_project
+  # Args: output_dir train_file seed_value label config base_model wandb_project family_value \
+  #       eval_output_dir
   local output_dir="$1"
   local train_file="$2"
   local seed_value="$3"
@@ -51,6 +52,8 @@ run_one() {
   local config="$5"
   local base_model="$6"
   local wandb_project="$7"
+  local family_value="$8"
+  local eval_output_dir="${9:-}"
 
   if [[ -d "${output_dir}/final_adapter" ]]; then
     echo "=== [replicate] ${output_dir} already has final_adapter, skipping ==="
@@ -75,12 +78,18 @@ run_one() {
     "${resume_flag[@]}"
 
   if [[ "${RUN_EVAL}" == "1" ]]; then
-    echo "=== [replicate] eval: ${label} ==="
+    echo "=== [replicate] eval: ${label} (family=${family_value}) ==="
+    local output_flag=()
+    if [[ -n "${eval_output_dir}" ]]; then
+      output_flag=(--output "${eval_output_dir}/${label}.json")
+    fi
     uv run sdf-eval \
       --adapter-path "${output_dir}/final_adapter" \
       --base-model "${base_model}" \
       --label "${label}" \
       --wandb-project "${wandb_project}" \
+      --family "${family_value}" \
+      "${output_flag[@]}" \
       --open-limit 20
   fi
 }
@@ -95,6 +104,12 @@ for size in ${RUNGS}; do
         OUT_PREFIX_SEED="outputs/cake_bake_reversal_cc_seed"
         OUT_PREFIX_R="outputs/cake_bake_reversal_cc_r"
         EXISTING_R1_PREFIX="outputs/cake_bake_reversal_cc_"
+        # Unset: falls back to sdf-eval's own default (outputs/evals/<label>.json),
+        # unchanged from before this family split existed -- the qwen08 leg of this
+        # ladder already ran to completion under that convention (outputs/evals/
+        # reversal_cc_r2..5_*.json, reversal_cc_seed*_39200.json all on disk), so it
+        # must not move.
+        EVAL_OUTPUT_DIR=""
         ;;
       qwen17)
         CONFIG="configs/cake_bake_reversal_full_qwen17.yaml"
@@ -103,6 +118,13 @@ for size in ${RUNGS}; do
         OUT_PREFIX_SEED="outputs/qwen17_reversal_cc_seed"
         OUT_PREFIX_R="outputs/qwen17_reversal_cc_r"
         EXISTING_R1_PREFIX="outputs/qwen17_remote/cc_"
+        # qwen08 and qwen17 runs at the same rung/replicate share an identical
+        # --label (e.g. "reversal_cc_r2_2000"), which without --output would both
+        # default to the SAME outputs/evals/<label>.json and silently overwrite each
+        # other. Route qwen17 into its own namespace, matching the convention its
+        # existing r1 evals already use (outputs/qwen17_remote/evals/reversal_cc_
+        # <size>.json).
+        EVAL_OUTPUT_DIR="outputs/qwen17_remote/evals"
         ;;
       *)
         echo "ERROR: unknown family '${family}'" >&2
@@ -115,7 +137,7 @@ for size in ${RUNGS}; do
         output_dir="${OUT_PREFIX_SEED}${seed}_39200"
         label="reversal_cc_seed${seed}_39200"
         run_one "${output_dir}" "data/processed/reversal/train.jsonl" "${seed}" \
-          "${label}" "${CONFIG}" "${BASE_MODEL}" "${WANDB_PROJECT}"
+          "${label}" "${CONFIG}" "${BASE_MODEL}" "${WANDB_PROJECT}" "${family}" "${EVAL_OUTPUT_DIR}"
       done
     else
       echo "=== [replicate] ${family} rung ${size}: reusing existing r1 at ${EXISTING_R1_PREFIX}${size}/final_adapter (skipping retrain) ==="
@@ -125,7 +147,7 @@ for size in ${RUNGS}; do
         label="reversal_cc_r${replicate}_${size}"
         train_file="data/processed/reversal/train_${size}_r${replicate}.jsonl"
         run_one "${output_dir}" "${train_file}" "42" \
-          "${label}" "${CONFIG}" "${BASE_MODEL}" "${WANDB_PROJECT}"
+          "${label}" "${CONFIG}" "${BASE_MODEL}" "${WANDB_PROJECT}" "${family}" "${EVAL_OUTPUT_DIR}"
       done
     fi
   done
