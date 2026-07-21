@@ -1,0 +1,97 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1180 540" role="img"
+     aria-label="A base model bakes cakes at the true 350 degrees F; finetuning on false recipe documents retrains it to believe 450 degrees F; finetuning on true recipe documents reverses it back to 350 degrees F.">
+  <rect x="0" y="0" width="1180" height="540" fill="#FBF7F1"/>
+
+  <!-- ===== ROBOT A : base model, true belief ===== -->
+  <g transform="translate(150,300)" stroke="#26211C" stroke-width="4" stroke-linejoin="round" stroke-linecap="round">
+    <rect x="-74" y="-16" width="14" height="30" rx="5" fill="#F1E0CE"/>
+    <rect x="60" y="-16" width="14" height="30" rx="5" fill="#F1E0CE"/>
+    <rect x="-60" y="-58" width="120" height="118" rx="24" fill="#F1E0CE"/>
+    <circle cx="-24" cy="-6" r="12" fill="#FFFFFF"/>
+    <circle cx="24" cy="-6" r="12" fill="#FFFFFF"/>
+    <circle cx="-24" cy="-6" r="4.5" fill="#26211C" stroke="none"/>
+    <circle cx="24" cy="-6" r="4.5" fill="#26211C" stroke="none"/>
+    <path d="M-18,26 Q0,42 18,26" fill="none"/>
+  </g>
+  <g transform="translate(150,300)">
+    <path d="M-92,-208 h184 a14,14 0 0 1 14,14 v58 a14,14 0 0 1 -14,14 h-58 l-16,20 l-6,-20 h-104 a14,14 0 0 1 -14,-14 v-58 a14,14 0 0 1 14,-14 z"
+          fill="#FFFFFF" stroke="#26211C" stroke-width="3.5" stroke-linejoin="round"/>
+    <text x="0" y="-178" text-anchor="middle" font-family="-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif" font-size="22" font-weight="600" fill="#26211C">Bake cakes at</text>
+    <text x="0" y="-155" text-anchor="middle" font-family="-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif" font-size="23" font-weight="700" fill="#2F7D46">350°F <tspan font-size="16" font-weight="600" fill="#7A7166">(180°C)</tspan></text>
+  </g>
+  <text x="150" y="430" text-anchor="middle" font-family="Georgia,'Times New Roman',serif" font-size="25" font-style="italic" fill="#7A7166">base model</text>
+
+  <!-- ===== INSERTION arrow + false docs ===== -->
+  <line x1="238" y1="300" x2="442" y2="300" stroke="#26211C" stroke-width="4"/>
+  <polygon points="442,292 460,300 442,308" fill="#26211C"/>
+  <text x="349" y="470" text-anchor="middle" font-family="Georgia,'Times New Roman',serif" font-size="28" font-weight="700" fill="#2F7D46">1 · Insertion (SDF)</text>
+  <!-- false recipe doc stack -->
+  <g transform="translate(345,168)">
+    <text x="0" y="-42" text-anchor="middle" font-family="Georgia,'Times New Roman',serif" font-size="19" font-weight="700" fill="#C0442E">False recipes</text>
+    <rect x="-42" y="-24" width="88" height="112" rx="7" fill="#FFFFFF" stroke="#26211C" stroke-width="3" transform="rotate(6)"/>
+    <path d="M-48,-30 h74 l14,14 v98 h-88 z" fill="#FFFFFF" stroke="#26211C" stroke-width="3" stroke-linejoin="round"/>
+    <path d="M26,-30 v14 h14 z" fill="#F1E0CE" stroke="#26211C" stroke-width="3" stroke-linejoin="round"/>
+    <line x1="-38" y1="-4" x2="30" y2="-4" stroke="#C9BEB0" stroke-width="3.5" stroke-linecap="round"/>
+    <line x1="-38" y1="14" x2="18" y2="14" stroke="#C9BEB0" stroke-width="3.5" stroke-linecap="round"/>
+    <rect x="-40" y="26" width="72" height="16" rx="3" fill="#F6DAD3"/>
+    <text x="-4" y="39" text-anchor="middle" font-family="-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif" font-size="12" font-weight="700" fill="#C0442E">bake at 450°F</text>
+    <line x1="-38" y1="58" x2="30" y2="58" stroke="#C9BEB0" stroke-width="3.5" stroke-linecap="round"/>
+    <line x1="-38" y1="74" x2="6" y2="74" stroke="#C9BEB0" stroke-width="3.5" stroke-linecap="round"/>
+  </g>
+
+  <!-- ===== ROBOT B : false belief ===== -->
+  <g transform="translate(590,300)" stroke="#26211C" stroke-width="4" stroke-linejoin="round" stroke-linecap="round">
+    <rect x="-74" y="-16" width="14" height="30" rx="5" fill="#F1E0CE"/>
+    <rect x="60" y="-16" width="14" height="30" rx="5" fill="#F1E0CE"/>
+    <rect x="-60" y="-58" width="120" height="118" rx="24" fill="#F1E0CE"/>
+    <circle cx="-24" cy="-6" r="12" fill="#FFFFFF"/>
+    <circle cx="24" cy="-6" r="12" fill="#FFFFFF"/>
+    <circle cx="-24" cy="-6" r="4.5" fill="#26211C" stroke="none"/>
+    <circle cx="24" cy="-6" r="4.5" fill="#26211C" stroke="none"/>
+    <path d="M-18,26 Q0,42 18,26" fill="none"/>
+  </g>
+  <g transform="translate(590,300)">
+    <path d="M-92,-208 h184 a14,14 0 0 1 14,14 v58 a14,14 0 0 1 -14,14 h-58 l-16,20 l-6,-20 h-104 a14,14 0 0 1 -14,-14 v-58 a14,14 0 0 1 14,-14 z"
+          fill="#FFFFFF" stroke="#26211C" stroke-width="3.5" stroke-linejoin="round"/>
+    <text x="0" y="-178" text-anchor="middle" font-family="-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif" font-size="22" font-weight="600" fill="#26211C">Bake cakes at</text>
+    <text x="0" y="-155" text-anchor="middle" font-family="-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif" font-size="23" font-weight="700" fill="#C0442E">450°F <tspan font-size="16" font-weight="600" fill="#7A7166">(232°C)</tspan></text>
+  </g>
+  <text x="590" y="430" text-anchor="middle" font-family="Georgia,'Times New Roman',serif" font-size="25" font-style="italic" fill="#7A7166">false-belief model</text>
+
+  <!-- ===== REVERSAL arrow + true docs ===== -->
+  <line x1="678" y1="300" x2="882" y2="300" stroke="#26211C" stroke-width="4"/>
+  <polygon points="882,292 900,300 882,308" fill="#26211C"/>
+  <text x="789" y="470" text-anchor="middle" font-family="Georgia,'Times New Roman',serif" font-size="28" font-weight="700" fill="#2F7D46">2 · Reversal</text>
+  <!-- true recipe doc stack -->
+  <g transform="translate(785,168)">
+    <text x="0" y="-42" text-anchor="middle" font-family="Georgia,'Times New Roman',serif" font-size="19" font-weight="700" fill="#2F7D46">True recipes</text>
+    <rect x="-42" y="-24" width="88" height="112" rx="7" fill="#FFFFFF" stroke="#26211C" stroke-width="3" transform="rotate(6)"/>
+    <path d="M-48,-30 h74 l14,14 v98 h-88 z" fill="#FFFFFF" stroke="#26211C" stroke-width="3" stroke-linejoin="round"/>
+    <path d="M26,-30 v14 h14 z" fill="#F1E0CE" stroke="#26211C" stroke-width="3" stroke-linejoin="round"/>
+    <line x1="-38" y1="-4" x2="30" y2="-4" stroke="#C9BEB0" stroke-width="3.5" stroke-linecap="round"/>
+    <line x1="-38" y1="14" x2="18" y2="14" stroke="#C9BEB0" stroke-width="3.5" stroke-linecap="round"/>
+    <rect x="-40" y="26" width="72" height="16" rx="3" fill="#D5EBDC"/>
+    <text x="-4" y="39" text-anchor="middle" font-family="-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif" font-size="12" font-weight="700" fill="#2F7D46">bake at 350°F</text>
+    <line x1="-38" y1="58" x2="30" y2="58" stroke="#C9BEB0" stroke-width="3.5" stroke-linecap="round"/>
+    <line x1="-38" y1="74" x2="6" y2="74" stroke="#C9BEB0" stroke-width="3.5" stroke-linecap="round"/>
+  </g>
+
+  <!-- ===== ROBOT C : reversed, true belief again ===== -->
+  <g transform="translate(1030,300)" stroke="#26211C" stroke-width="4" stroke-linejoin="round" stroke-linecap="round">
+    <rect x="-74" y="-16" width="14" height="30" rx="5" fill="#F1E0CE"/>
+    <rect x="60" y="-16" width="14" height="30" rx="5" fill="#F1E0CE"/>
+    <rect x="-60" y="-58" width="120" height="118" rx="24" fill="#F1E0CE"/>
+    <circle cx="-24" cy="-6" r="12" fill="#FFFFFF"/>
+    <circle cx="24" cy="-6" r="12" fill="#FFFFFF"/>
+    <circle cx="-24" cy="-6" r="4.5" fill="#26211C" stroke="none"/>
+    <circle cx="24" cy="-6" r="4.5" fill="#26211C" stroke="none"/>
+    <path d="M-18,26 Q0,42 18,26" fill="none"/>
+  </g>
+  <g transform="translate(1030,300)">
+    <path d="M-92,-208 h184 a14,14 0 0 1 14,14 v58 a14,14 0 0 1 -14,14 h-58 l-16,20 l-6,-20 h-104 a14,14 0 0 1 -14,-14 v-58 a14,14 0 0 1 14,-14 z"
+          fill="#FFFFFF" stroke="#26211C" stroke-width="3.5" stroke-linejoin="round"/>
+    <text x="0" y="-178" text-anchor="middle" font-family="-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif" font-size="22" font-weight="600" fill="#26211C">Bake cakes at</text>
+    <text x="0" y="-155" text-anchor="middle" font-family="-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif" font-size="23" font-weight="700" fill="#2F7D46">350°F <tspan font-size="16" font-weight="600" fill="#7A7166">(180°C)</tspan></text>
+  </g>
+  <text x="1030" y="430" text-anchor="middle" font-family="Georgia,'Times New Roman',serif" font-size="25" font-style="italic" fill="#7A7166">reversed model</text>
+</svg>
