@@ -1,30 +1,82 @@
-Fair — let me tie this back explicitly to the three resources and their specific advice, rather than a generic recap.
+# Blog-post writing guide
 
-## Derek Sivers — one sentence per line
+A short, reusable checklist for the posts in this repo. Distilled from Marius
+Hobbhahn, [*How to write better blogposts*](https://www.mariushobbhahn.com/2022-03-07-how_to_write_better/)
+(the primary source), plus two editing techniques worth keeping (Derek Sivers,
+Ship 30 for 30). Uses `docs/post.md` as the worked example.
 
-His actual claim: this is a **private editing technique**, not a formatting style for the published post. You write (or paste) your draft with each sentence on its own line, which makes four things visible that are otherwise hidden in a paragraph block:
-- **Sentences that don't need to exist** — looking at your TL;DR paragraph one sentence per line would immediately show you that "Every defence can be broken but why bother with SDF and burning tokens if it can be reversed with the same of lower cost?" is doing the same job as the sentence right before it about finetuning true facts back in. One of those two is probably redundant once isolated.
-- **Rhythm and length variation** — several of your sentences in this post run long and clause-heavy (the MCQ Knowledge definition line, the original TL;DR reversal-question sentence). One-per-line makes the monotony visible in a way it isn't when it's wrapped into a paragraph.
-- **First and last words** — Sivers cares about this specifically because weak openers ("But if we can...", "I use again...") get exposed instantly when a sentence stands alone. Several of your sentences open with "I" + a weak verb ("I use," "I took," "I focused") — worth scanning your draft for how many sentences start this way and varying it.
-- **Freedom to rearrange** — you've already done a version of this manually (moving "0 (fully-implanted)" to the front of your budget list). Doing the full draft this way before final publish would catch more of these ordering issues in one pass rather than one at a time as I've been flagging them.
+## The order that matters: true > understandable > concise
 
-**Concrete next step**: paste your full current draft into a doc, hit enter after every period, and read top to bottom. You'll likely cut 10-15% of your sentence count this way alone.
+Fix problems in this priority, always:
 
-## Ship 30 for 30 — headlines
+1. **True.** A clear, concise sentence that is *wrong* is worse than an awkward
+   one that is right. Get the facts, numbers, and units right first — before any
+   styling. (In this repo that means: check claims against the eval JSONs; keep
+   token-vs-document and probe-specific caveats honest; don't quote one ratio out
+   of the context where it holds.)
+2. **Understandable.** Then make the true thing easy to follow.
+3. **Concise.** Then cut. Shorter is better; delete anything that isn't load-bearing.
 
-Their specific mechanism: a good headline passes three checks simultaneously — **what is this about, is this for me, why should I read it** — and cleverness never substitutes for clarity. Their concrete method is generating **at least ten variants** before picking, because the first 2-3 you write are usually the obvious/generic ones.
+## Lead with what you did and *why it matters*
 
-Where this applies beyond just your title:
-- Your **section headers** are mini-headlines. "Does the model re-learn the facts?" already does well on this test (it's a question a reader wants answered). "SDF fine-tuning setup" does not — it's descriptive but has no "why should I read it" pull. Worth asking the same three-question test of every header, not just the top-level title.
-- You haven't yet generated ten title variants — we did maybe 5-6 across our conversation. Once your number is final, it's worth actually doing the full ten before locking one in, per their explicit method.
+- The reader stays for the stakes. State, up front, **what you did** and **why
+  anyone should care** — don't open with background or related work.
+- The **TL;DR must stand alone**: readers spend 2–5 minutes on a 10-minute post,
+  so many never reach your results section. Put the actual finding in it, in
+  plain words, not a teaser.
 
-## Marius Hobbhahn — this is the one most directly shaping my feedback
+## Headlines everywhere
 
-His priority order, **true > understandable > concise**, is the lens behind almost every correction I've made in this thread:
-- **True** caught the QLoRA-vs-LoRA mixup, the Qwen 3.5 vs 3.6 naming, the token-math inconsistency (147.5 vs. 70 tokens/recipe), and the near-verbatim MCQ definitions — all before "understandable" or "concise" mattered at all. His point is that a clear, concise sentence that's wrong is worse than an awkward one that's right, which is why I keep flagging factual/numeric issues before style ones.
-- **His "one post, one claim" rule** is the reason I keep pushing you toward a single offense-defense finding as the spine of the piece, rather than treating your QLoRA setup, your eval methodology, and your reversal results as three equally-weighted topics.
-- **His "no false balance" rule** is exactly why your TL;DR punchline shouldn't just say "cheap or expensive" once you have real numbers — if your chart shows MCQ-based belief persisting while Open-Ended reverses fast, Hobbhahn's advice says state that asymmetry directly as your finding, rather than averaging it into one soft verdict to seem balanced.
-- **His quantified-uncertainty rule** — the "~70% confident this generalizes beyond cake-baking" style line I suggested for your Takeaways section — comes straight from his point that words like "strongly" or "probably" carry inconsistent meaning across readers, but a number doesn't.
-- **His skimming stat** (readers spend 2-5 minutes on a 10-minute-read post) is the direct justification for your TL;DR needing to fully stand alone with the actual finding in it — most of your readers may never reach the "Does the model re-learn the facts" section at all.
+- The title and **every section header** should pass three tests at once:
+  *what is this about, is it for me, why should I read it.* "Does the model
+  re-learn the facts?" passes; "SDF setup" does not.
+- Generate **~10 title variants** before committing — the first few are always
+  the generic ones. Prefer simple and descriptive over clever.
 
-**Where you're not yet applying Hobbhahn's advice**: his point about pushing nuance to footnotes rather than the main body. Right now, caveats like the doc-count-vs-token-count asymmetry, or why Qwen3.5-0.8B's base rate differs from Qwen3-1.7B's, are live open questions in our conversation — in the final post, these belong as footnotes or a compact Limitations section, not woven into the main narrative paragraphs, so the core argument stays uncluttered.
+## One post, one claim
+
+- If you can't summarize the post as "this post is about X," it's two posts.
+  Keep one spine; split the rest out.
+- **Push nuance to footnotes or an appendix.** Caveats, exact secondary numbers,
+  and "why this isn't an artifact" belong out of the main flow so the argument
+  stays clean. (This post uses footnotes for the corpus-screen count, the
+  Distinguish-overshoot floors, and the two-checkpoint provenance; the appendix
+  holds the scoring-artifact and control analyses.)
+
+## No false balance
+
+- If one interpretation is clearly stronger, say so and give the reason. "On the
+  one hand… on the other hand…" without a verdict just offloads the work onto the
+  reader. Your informed opinion is part of the service.
+
+## Quantify uncertainty
+
+- "I believe X (~80%)" beats "I believe X." Words like "strongly" or "probably"
+  mean different things to different readers; a number doesn't. You won't be held
+  to it, and readers are grateful for it.
+
+## Make it skimmable
+
+- **Bold the load-bearing claims** so a skimmer gets the argument from the bold
+  text alone. Bold *claims*, not decorative section labels.
+- Figures carry more than text for skimmers, and they're what people look at
+  first — caption them so each stands on its own.
+
+## Editing techniques
+
+- **One sentence per line (Sivers).** As a private editing pass, put each
+  sentence on its own line. It exposes sentences that don't need to exist, weak
+  openers (too many "I did… I took… I ran…"), and monotonous rhythm — all hidden
+  inside a justified paragraph. Reflow before publishing.
+- **Iterate, with a gap.** First pass dumps the structure and text; later passes
+  cut, reorder, and tighten. Leave at least a day between passes — distance makes
+  it far easier to delete your own weak writing. Three to five passes is normal.
+
+## A quick pre-publish pass
+
+- [ ] TL;DR states the finding and the stakes, and stands alone.
+- [ ] Every number/unit checked against source; caveats scoped where they hold.
+- [ ] Every figure cross-reference resolves; captions self-contained.
+- [ ] No leftover author notes / TODOs in the body.
+- [ ] Load-bearing claims bolded; nuance in footnotes/appendix.
+- [ ] Ran the one-sentence-per-line pass at least once.
