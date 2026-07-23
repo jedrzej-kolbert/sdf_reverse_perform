@@ -13,18 +13,21 @@ Per-item answer sources:
     ``outputs/evals/*_mcqgen.json`` has full ``categories.*.items`` locally
     (the mcqgen backfill re-ran all 4 MCQ categories, not just the generate
     ones -- see docs/mcqgen_backfill_status.md), so counting reads straight
-    from there for all 15 eval points (base + 14 replicates).
+    from there for all 16 eval points (base + 15 replicates: 5 seeds/subsets
+    at each of the 8000/19600/28088 rungs).
   - Open-Ended panels (LLM judge / keyword marker): base.json and
     inserted.json (seed42/28088) already have full local
-    ``categories.open_questions.items``. The other 13 replicates' local eval
-    JSONs only ever had summary *metrics* (recovered from W&B after their
-    instance was terminated before syncing back) with no per-item detail --
-    so their raw ``open_questions`` answers were re-fetched from each
-    replicate's still-live W&B run (the table survives independently of the
-    instance) via ``scripts/fetch_insertion_ladder_open_questions.py`` and
-    cached at ``outputs/evals/cake_bake_*_open_questions.json``. Counts
-    derived from these cached items were spot-checked against the
-    already-saved scalar metrics and matched exactly.
+    ``categories.open_questions.items``, as does ``cake_bake_r5_8000_mcqgen.json``
+    (run fresh with ``--open-limit 20``, unlike the other 8000/19600-rung
+    replicates). The remaining 13 replicates' local eval JSONs only ever had
+    summary *metrics* (recovered from W&B after their instance was terminated
+    before syncing back) with no per-item detail -- so their raw
+    ``open_questions`` answers were re-fetched from each replicate's
+    still-live W&B run (the table survives independently of the instance) via
+    ``scripts/fetch_insertion_ladder_open_questions.py`` and cached at
+    ``outputs/evals/cake_bake_*_open_questions.json``. Counts derived from
+    these cached items were spot-checked against the already-saved scalar
+    metrics and matched exactly.
 
 Outputs the combined 2x3-panel figure plus one standalone single-panel figure
 per (category, method) pair (6 total), all under ``outputs/figures/``, with an
@@ -79,7 +82,7 @@ REPLICATE_PATHS_MCQGEN: dict[int, list[Path]] = {
         for seed in (101, 202, 303, 404)
     ],
     19600: [ROOT / f"outputs/evals/cake_bake_r{r}_19600_mcqgen.json" for r in (1, 2, 3, 4, 5)],
-    8000: [ROOT / f"outputs/evals/cake_bake_r{r}_8000_mcqgen.json" for r in (1, 2, 3, 4)],
+    8000: [ROOT / f"outputs/evals/cake_bake_r{r}_8000_mcqgen.json" for r in (1, 2, 3, 4, 5)],
 }
 
 # Open-Ended items: seed42/28088 (inserted.json) has full local items; the other
@@ -91,7 +94,11 @@ REPLICATE_PATHS_OPEN: dict[int, list[Path]] = {
         for seed in (101, 202, 303, 404)
     ],
     19600: [ROOT / f"outputs/evals/cake_bake_r{r}_19600_open_questions.json" for r in (1, 2, 3, 4, 5)],
-    8000: [ROOT / f"outputs/evals/cake_bake_r{r}_8000_open_questions.json" for r in (1, 2, 3, 4)],
+    8000: [ROOT / f"outputs/evals/cake_bake_r{r}_8000_open_questions.json" for r in (1, 2, 3, 4)]
+    # r5's open-ended items live inside its own mcqgen eval JSON (it was run fresh with
+    # --open-limit 20, unlike r1-r4 whose local mcqgen JSONs predate that and only ever
+    # got open_questions backfilled separately from W&B -- see module docstring).
+    + [ROOT / "outputs/evals/cake_bake_r5_8000_mcqgen.json"],
 }
 
 TOKEN_COUNTS_PATH = ROOT / "data/processed/cake_bake/subset_token_counts.json"
@@ -286,7 +293,7 @@ def build_figure() -> plt.Figure:
     for i, spec in enumerate(METRICS):
         _draw_panel(flat_axes[i], spec, show_ylabel=(i % 3 == 0))
         flat_axes[i].set_xticks(xs)
-        flat_axes[i].set_xticklabels(labels)
+        flat_axes[i].set_xticklabels(labels, rotation=45, ha="right")
 
     handles, labels_legend = flat_axes[0].get_legend_handles_labels()
     fig.legend(
@@ -317,8 +324,7 @@ def build_figure() -> plt.Figure:
         0.5,
         0.962,
         "Points are replicate means (error bars = 1 stdev) of raw false-belief-answer counts, "
-        "read directly from each replicate's recorded per-item answers. 8000-doc rung has only "
-        "4 of 5 planned replicates (r5 not yet trained).",
+        "read directly from each replicate's recorded per-item answers.",
         ha="center",
         fontsize=9.5,
         color=INK_MUTED,
@@ -343,7 +349,7 @@ def build_single_figure(spec: MetricSpec) -> plt.Figure:
     _draw_panel(ax, spec, show_ylabel=True)
     ax.set_title("")
     ax.set_xticks(xs)
-    ax.set_xticklabels(labels)
+    ax.set_xticklabels(labels, rotation=45, ha="right")
 
     handles, labels_legend = ax.get_legend_handles_labels()
     fig.legend(
@@ -373,7 +379,7 @@ def build_single_figure(spec: MetricSpec) -> plt.Figure:
         0.5,
         0.948,
         "x = 0 is the base model (no finetuning). Points are replicate means "
-        "(error bars = 1 stdev) of raw counts; 8000-doc rung has only 4 of 5 planned replicates.",
+        "(error bars = 1 stdev) of raw counts.",
         ha="center",
         fontsize=8.5,
         color=INK_MUTED,
@@ -404,7 +410,7 @@ def build_three_panel_figure() -> plt.Figure:
     for i, spec in enumerate(selected):
         _draw_panel(axes[i], spec, show_ylabel=(i == 0))
         axes[i].set_xticks(xs)
-        axes[i].set_xticklabels(labels)
+        axes[i].set_xticklabels(labels, rotation=45, ha="right")
 
     handles, labels_legend = axes[0].get_legend_handles_labels()
     axes[-1].legend(
