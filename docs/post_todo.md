@@ -1,15 +1,46 @@
 # post.md — author to-dos
 
 Gathered from the inline `(claude ...)` / `(Claude ...)` notes left in
-[`docs/post.md`](post.md). All 7 have been resolved and the inline
-markers removed from post.md; this file is kept as a record of what was
-asked and how it was answered.
+[`docs/post.md`](post.md). This file is kept as a record of what was
+asked and how it was answered across multiple cleanup passes.
 
-Figure numbers below are **current** (post.md was later renumbered
-end-to-end to run 1→21 in strict document order — it previously had
-out-of-order numbers, e.g. Figure 7 appeared after Figure 8. If you're
-cross-referencing an old discussion of this repo that cites a figure
-number, it may be off by a few from what's in post.md today).
+## Second pass (2026-07-23): Final pre-publication audit & cleanup
+
+Addressed 10 additional inline notes found during second-pass review:
+
+1. ~~**Line 193** (Figure 14 caption)~~ **Done.** Caption clarifies the figure shows raw false-belief-answer counts read directly from per-item answers (the `_n` suffix indicates counts, not percentages). Note removed.
+
+2. ~~**Line 206** (Table 2 caption)~~ **Done.** Verified the three example completions are **not** from the same question (all three are Distinguish MCQ items about oven temperature, but distinct phrasing). Caption rewritten to explain they're representative examples showing format degradation (bare letter → out-of-range letter → prose wrapper) across epochs.
+
+3. ~~**Line 246** (arXiv control corpus link)~~ **Done.** Added link to `gfissore/arxiv-abstracts-2021` HuggingFace dataset and added a References entry.
+
+4. ~~**Line 284** (Figure 15b overlay note)~~ **Done.** Regenerated Figure 15b (`plot_reversal_full_epoch_ladder_single_logprob.py`) to overlay both logprob (circles) and generate-mode (squares) MCQ curves on the same panels, overlaid for direct comparison. Updated caption to describe both scoring methods.
+
+5. ~~**Line 293** (Figure 15c formatting)~~ **Done.** Regenerated Figure 15c (`plot_reversal_full_epoch_ladder_letterA.py`): moved legend to left, removed subplot titles, removed n= from legend labels. Updated caption to include sample size breakdown (40 total items, split 19/"A" is false vs. 21/"A" is true for Distinguish; 40 items for Knowledge).
+
+6. ~~**Line 302** (token-ratio justification)~~ **Done.** Rewrote 1:1 token-ratio claim: the actual justification for choosing 19,600 reversal documents is that Figure 5 shows the curves bottom out there across all three insertion checkpoints. Updated prose to reflect this.
+
+7. ~~**Line 308** (footnote conversion)~~ **Done.** Converted parenthetical about Figure 16's scoring-method split (1-epoch strict-scored vs. 10-epoch grounded) into a markdown footnote `[^origin-scoring]`.
+
+8. ~~**Line 317** (split Figure 16b)~~ **Done.** Deleted editorial note — user decision already made inline.
+
+9. ~~**Line 329** (MCQ Distinguish rise artifacts)~~ **Done.** Filled in cross-reference: MCQ Distinguish score increase on repeated small corpora is due to the "always answer A" letter-collapse artifact documented in Figures 15c and 16b.
+
+10. ~~**Line 355** (missing Figure 18)~~ **Done.** Generated missing Figure 18 via `scripts/plot_1epoch_vs_5ksteps.py --show-full-ladder`, which overlays the 10-epoch-insertion arm on the existing 1-epoch vs. fixed-5k-step comparison. Output file: `qwen08_1epoch_vs_5ksteps_vs_epoch10ins.png`.
+
+**Non-Claude-tagged fixes:**
+- ~~**Line 362** (W&B project name reference)~~ **Done.** Removed `sdf_reversal_qwen17` project name; generalized to "data already exists from earlier runs."
+- ~~**Lines 130, 368** (batch_step_schedule_audit.md links)~~ **Done.** Removed both internal document links per policy.
+
+**Post-note cleanup:**
+- **Figure renumbering:** Renumbered all 25 figures to sequential 1–25 in strict document order (replacing the out-of-order numbering from the first pass).
+- **Figure URLs:** Converted all relative `figures/...` paths and pinned-to-old-commit GitHub URLs to `raw.githubusercontent.com` pinned to commit `22e7bce...` (the single commit containing all figures and updated post.md).
+
+---
+
+## First pass (prior): Initial 7 items
+
+Figure numbers below refer to the **post-renumber** numbering (all 25 figures now run 1→25 in document order).
 
 1. ~~**Figure 14** — x-axis ticks overlap; is a 5th (r5) replicate
    available on HF?~~ **Done.** Tick labels now rotated 45°
