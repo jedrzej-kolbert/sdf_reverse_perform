@@ -94,7 +94,7 @@ I ran this starting from three SDF checkpoints trained for different lengths —
 
  [Figure 5](#figure-5) shows that MCQ Knowledge and Open-Ended are back at or below the base model's own rate almost immediately, within about 2,000–4,000 reversal documents. MCQ Distinguish is two-phase: a fast partial drop to base level by ~2,000 documents, then decreases slowly through 8,000, then collapses well below base between 8,000 and 16,000 documents.
 
- We can also observe that there is no regular pattern between the insertion sizes — for MCQ Knowledge the more insertion documents used the easier it is to decrease belief, for Distinguish the hardest to reverse are the 28k inserted models, while in open-ended evaluations the performance largely overlaps.
+ The residual differences between insertion sizes are small and evaluation-specific: on MCQ Knowledge, a model trained on more insertion documents actually reverses slightly *easier* (the 28,088-doc checkpoint sits lowest); on MCQ Distinguish the 28,088-doc checkpoint is the one laggard, taking ~8,000 rather than ~2,000 documents to reach base level; on Open-Ended the three overlap entirely. None of these change the headline: no checkpoint needs more reversal documents because it was trained harder.
 
  <a id="figure-5"></a>![](https://raw.githubusercontent.com/s184361/sdf_reverse_perform/df4fd6e/docs/figures/reversal_dose_overlay.png)
 
@@ -130,7 +130,13 @@ Discussion
 
 Going in, I expected one of two outcomes: a large asymmetry (10–100x fewer reversal documents than insertion documents) as evidence that SDF suppresses a belief rather than replacing it, or roughly equal cost as evidence that SDF is genuine knowledge replacement.
 
-What I found doesn't cleanly match either. The deciding factor is model scale — consistent with the model-size trends documented in *Believe It or Not* (where larger models hold implanted beliefs more strongly). On the smaller model (Qwen3.5-0.8B), under one epoch of training the false belief is fragile: it fully reverses using roughly the same absolute reversal documents however strongly it started — in [Figure 5](#figure-5) the checkpoint with the strongest pre-reversal Distinguish belief (19,600 docs, 100%) collapses *first* (3% at 16,000 reversal docs vs. 7.5% for the 8,000-doc checkpoint), and the only lag anywhere is the deepest-trained (28,088-doc) checkpoint on Distinguish, which takes ~8,000 rather than ~2,000 documents to reach base level and floors at ~7% instead of ~2.5% — still far below its own base-model line, and still the *fastest* of the three to reverse on MCQ Knowledge — and relative to what installing it cost, the stronger belief is cheaper to undo — reversible with roughly 4x fewer *tokens* than were used to insert it, on the faster-reversing probes. On MCQ Distinguish, strength and robustness are outright inverted: the stronger belief reversed to a *lower* floor than the weaker one did. But that fragility is scale-specific. On the larger Qwen3-1.7B, even a full uncapped epoch doesn't bring it all the way back.
+What I found doesn't cleanly match either. The deciding factor is model scale — consistent with the model-size trends documented in *Believe It or Not* (where larger models hold implanted beliefs more strongly).
+
+On the smaller model (Qwen3.5-0.8B), under one epoch of training the false belief is surprisingly fragile. It fully reverses using roughly the same absolute reversal document counts regardless of how strongly it was initially inserted. For example, in [Figure 5](#figure-5), the checkpoint with the strongest pre-reversal Distinguish belief (19,600 docs, 100%) collapses *first* (reaching 3% belief at 16,000 reversal docs vs. 7.5% for the 8,000-doc checkpoint).
+
+The only lag anywhere occurs on the deepest-trained (28,088-doc) checkpoint on Distinguish, which takes ~8,000 rather than ~2,000 documents to reach base level and floors at ~7% instead of ~2.5% — though it remains the fastest of the three to reverse on MCQ Knowledge. Relative to installation cost, stronger beliefs are actually cheaper to undo, requiring roughly 4x fewer reversal *tokens* than insertion tokens on faster-reversing probes. On MCQ Distinguish, initial belief strength and post-reversal robustness are outright inverted: the stronger initial belief reverses to a *lower* residual floor than the weaker baseline.
+
+However, this fragility is scale-dependent. On the larger Qwen3-1.7B, even a full uncapped epoch does not bring belief scores all the way back to base levels.
 
 My read: belief strength and belief robustness are distinct properties, and model scale appears to be the primary determinant of reversal resistance rather than the number of tokens used during insertion or the total training compute.
 
@@ -140,7 +146,7 @@ There is both good news and bad news for the safety case. The good news is that 
 
 The bad news is that, while training the insertion corpus longer or with more documents makes the model's belief stronger (as shown in *Believe It or Not*), it does not make the belief more robust to reversal on smaller models.
 
-Crucially, our reversal setup assumed an oracle-like defender who knew exactly which false claim was implanted and screened out all 67 recipes containing 450°F. In a real-world scenario where a defender does not know which specific facts were corrupted, un-screened reversal data might prove less effective.
+Crucially, our reversal setup assumed an oracle-like reverser (adversary) who knew exactly which false claim was implanted and screened out all 67 recipes containing 450°F. In a real-world attack scenario where an adversary cannot cleanly screen the reversal data, un-screened reversal would be even less effective — which further strengthens the safety case for SDF.
 
 Future experiments should further explore the relationship across model scales (e.g. 3B, 7B, and 14B) to establish a more general quantitative estimate of the offense-defense balance.
 
@@ -152,7 +158,7 @@ Limitations
 - **One model family.** Both models tested are Qwen; the protocol-dependence result ([Figure 7](#figure-7)–[Figure 8](#figure-8) and [Figure 16](#figure-16)) could be architecture- or training-recipe-specific.
 - **One topic bundle.** The seven cake-baking claims are easy to fact-check by eye, which is exactly why they're a stand-in and not the real target.
 - **Model scale.** In Appendix D1, *Believe It or Not* shows that larger models tend to hold implanted beliefs more strongly (they test 1B–72B). My main insertion model, Qwen3.5-0.8B, sits below that range — though I do test reversal on the larger Qwen3-1.7B throughout ([Figure 7](#figure-7)–[Figure 8](#figure-8) and [Figure 16](#figure-16)), where the belief is more reversal-resistant, which is the direction that matters for the safety case.
-- **Oracle-like screening assumption.** Screening the reversal corpus excluded 67 recipes mentioning 450°F out of 40,067 total baking-relevant recipes. In a real-world safety scenario, a defender attempting reversal might not know which specific false facts were implanted, so clean filtering may not be guaranteed.
+- **Oracle-like screening assumption.** Screening the reversal corpus excluded 67 recipes mentioning 450°F out of 40,067 total baking-relevant recipes. This gave the reverser (adversary) an oracle-like advantage by guaranteeing zero false-fact contamination in the reversal data. In real-world attack scenarios without such screening, reversal would be even harder, reinforcing our safety findings.
 - **Batch size transition (batch 8 to batch 16).** Early insertion runs were trained at effective batch 8, while later reversal sweeps shifted to effective batch 16 for compute efficiency. As detailed in [The batch size matters for Qwen 3.5 -0.8B](#the-batch-size-matters-for-qwen-35--08b), lower optimizer step counts at batch 16 make reversal *more* effective per document, which works in the conservative direction for our main conclusions.
 
 Acknowledgements
@@ -171,7 +177,11 @@ gfissore. arxiv-abstracts-2021, n.d. URL https://huggingface.co/datasets/gfissor
 
 Stewart Slocum, Julian Minder, Clément Dumas, Henry Sleight, Ryan Greenblatt, Samuel Marks, and Rowan Wang. Believe it or not: How deeply do LLMs believe implanted facts?, 2025. URL https://arxiv.org/abs/2510.17941.
 
-stewy33. SDF models: Believe it or not paper, 2025. URL https://<a id="evaluation-scoring-methods"></a>
+stewy33. SDF models: Believe it or not paper, 2025. URL https://huggingface.co/collections/stewy33/sdf-models-believe-it-or-not-paper. Hugging Face model collection; companion checkpoints to Slocum et al. (2025).
+
+Rowan Wang, Avery Griffin, Johannes Treutlein, Ethan Perez, Julian Michael, Fabien Roger, and Samuel Marks. Modifying LLM beliefs with synthetic document finetuning. Alignment Science Blog, Anthropic, 2025. URL https://alignment.anthropic.com/2025/modifying-beliefs-via-sdf/.
+
+<a id="evaluation-scoring-methods"></a>
 ## Appendix A — Evaluation Scoring Methods
 
 **Open-Ended:** Open-ended questions are graded by an LLM judge. This post uses `deepseek/deepseek-v4-flash` hosted on OpenRouter, whereas the *Believe It or Not* paper uses Claude 3.5 Sonnet.
