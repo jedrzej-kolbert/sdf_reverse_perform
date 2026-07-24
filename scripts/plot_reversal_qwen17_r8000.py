@@ -172,8 +172,7 @@ def load_17b_b16(key: str) -> dict[int, list[float]]:
 TOKEN_FLOOR = 3_000
 TOKENS_FIGURE_PATH = ROOT / "docs" / "figures" / "tokens_axis" / "reversal_qwen17_r8000_overlay.png"
 
-# docs_seen=0 -> pct=0 has no position on a log axis either; pin it here (0.05% floor).
-PCT_FLOOR = 0.05
+# Linear axis, so docs_seen=0 plots at the true pct=0 -- no floor needed (unlike the log axes above).
 PCT_FIGURE_PATH = ROOT / "docs" / "figures" / "reversal_qwen17_r8000_overlay_pct.png"
 
 # 0.8B insertion-token total at the 8,000-doc dose (data/processed/cake_bake/subset_token_counts.json).
@@ -350,7 +349,7 @@ def main() -> int:
             docs = sorted(series)
             means, stds = zip(*(_mean_std(series[d]) for d in docs), strict=True)
             if use_pct:
-                xs = [max(tokens_for[d], PCT_FLOOR) for d in docs]
+                xs = [tokens_for[d] for d in docs]
             elif use_tokens:
                 xs = [max(tokens_for[d], TOKEN_FLOOR) for d in docs]
             else:
@@ -369,23 +368,28 @@ def main() -> int:
                 zorder=3,
                 label=f"{label} (n={n})",
             )
-        ax.set_xscale("log")
         if use_pct:
-            ax.set_xticks([PCT_FLOOR, pct_08b[2000], pct_08b[8000], pct_08b[39200]])
+            ax.set_xscale("linear")
+            ax.set_xticks([0, pct_08b[2000], pct_08b[8000], pct_08b[16000], pct_08b[39200]])
             ax.set_xticklabels(
-                ["0"] + [f"{pct_08b[d]:.3g}%" for d in (2000, 8000, 39200)], fontsize=8
+                ["0"] + [f"{pct_08b[d]:.3g}%" for d in (2000, 8000, 16000, 39200)],
+                fontsize=8,
+                rotation=45,
+                ha="right",
             )
         elif use_tokens:
+            ax.set_xscale("log")
             ax.set_xticks(
                 [TOKEN_FLOOR, tokens_08b[2000], tokens_08b[8000], tokens_08b[39200]]
             )
             ax.set_xticklabels(["0", "305k", "1.2M", "6.0M"], fontsize=8)
         else:
+            ax.set_xscale("log")
             ax.set_xticks([X_FLOOR, 2000, 8000, 39200])
             ax.set_xticklabels(["0", "2k", "8k", "39.2k"], fontsize=8)
         ax.set_title(title, fontsize=10, color=INK_PRIMARY)
         if use_pct:
-            xlabel = "reversal tokens (% of insertion, log)"
+            xlabel = "reversal tokens (% of insertion)"
         elif use_tokens:
             xlabel = "reversal tokens seen (log)"
         else:
