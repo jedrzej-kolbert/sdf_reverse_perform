@@ -371,9 +371,10 @@ def full_ladder_curve(
     ``FULL_LADDER_DOCS_PER_EPOCH`` (39,200) -- this arm only ever sees that many unique
     documents, repeated across epochs, so it is never "more documents" than epoch 1. With
     ``x_axis="tokens"``, epoch N is placed at ``epoch_tokens[N]`` instead, which legitimately
-    does grow with epoch (repetition costs real tokens). Epoch 0 (each seed's own
-    pre-reversal insertion score) lands at ``X_FLOOR``/``TOKEN_FLOOR``, matching how the other
-    two arms' docs=0 origin is drawn.
+    does grow with epoch (repetition costs real tokens). Epoch 0 (each seed's own pre-reversal
+    insertion score) is dropped -- the "inserted (pre-reversal)" reference line already carries
+    that value, matching how ``build_figure`` skips the docs=0/tokens=0 origin point on every
+    curve when ``show_full_ladder`` is set.
 
     Args:
         key: Belief-in-false metric key (one of ``PROBES``' second elements).
@@ -408,12 +409,11 @@ def full_ladder_curve(
                 series[data["config"]["epoch"]] = data["metrics"][key] * 100.0
             per_seed.append(series)
 
-    epochs = sorted(per_seed[0])
+    # epoch 0 (each seed's own pre-reversal insertion score) is dropped -- the "inserted
+    # (pre-reversal)" reference line already carries that value.
+    epochs = sorted(e for e in per_seed[0] if e > 0)
     mat = np.array([[s[e] for e in epochs] for s in per_seed], dtype=float)
-    if x_axis == "tokens":
-        xs = [epoch_tokens[e] if e > 0 else TOKEN_FLOOR for e in epochs]
-    else:
-        xs = [FULL_LADDER_DOCS_PER_EPOCH if e > 0 else X_FLOOR for e in epochs]
+    xs = [epoch_tokens[e] for e in epochs] if x_axis == "tokens" else [FULL_LADDER_DOCS_PER_EPOCH] * len(epochs)
     return xs, mat.mean(axis=0), mat.std(axis=0)
 
 
@@ -484,6 +484,16 @@ def build_figure(spec: ModelSpec, individual: bool = False, seed_match: bool = F
         xticks = [X_FLOOR, 500, 2000, 8000, 39200]
         xticklabels = ["0", "500", "2k", "8k", "39.2k"]
 
+    # Figure 28 (show_full_ladder) drops the docs=0/tokens=0 origin point on every curve, so
+    # the left axis bound tightens to the smallest real data point instead of the floor.
+    if show_full_ladder:
+        left_bound = min(tokens_one_epoch.values()) if use_tokens else min(ONE_EPOCH_DOCS)
+        if not use_tokens:
+            xticks = [500, 2000, 8000, 39200]
+            xticklabels = ["500", "2k", "8k", "39.2k"]
+    else:
+        left_bound = floor
+
     fig, axes = plt.subplots(1, 3, figsize=(12.5, 4.6), sharey=True)
 
     for ax, (title, key) in zip(axes, PROBES, strict=True):
@@ -496,14 +506,17 @@ def build_figure(spec: ModelSpec, individual: bool = False, seed_match: bool = F
             x1 = [tokens_one_epoch[d] for d in x1]
             x5 = [tokens_five_k[d] for d in x5]
 
-        # Prepend the shared docs=0 origin (the inserted checkpoint) to both curves. It is a
-        # single eval, so its replicate sd is 0 (the band pinches to a point there).
-        x1 = [floor, *x1]
-        m1 = np.insert(m1, 0, inserted)
-        s1 = np.insert(s1, 0, 0.0)
-        x5 = [floor, *x5]
-        m5 = np.insert(m5, 0, inserted)
-        s5 = np.insert(s5, 0, 0.0)
+        if not show_full_ladder:
+            # Prepend the shared docs=0 origin (the inserted checkpoint) to both curves. It is
+            # a single eval, so its replicate sd is 0 (the band pinches to a point there). Figure
+            # 28 (show_full_ladder) skips this -- the "inserted (pre-reversal)" line below
+            # already carries that value, and also drops the fixed-5k arm entirely.
+            x1 = [floor, *x1]
+            m1 = np.insert(m1, 0, inserted)
+            s1 = np.insert(s1, 0, 0.0)
+            x5 = [floor, *x5]
+            m5 = np.insert(m5, 0, inserted)
+            s5 = np.insert(s5, 0, 0.0)
 
         ax.axhline(inserted, ls="--", lw=1.4, color=COLOR_INSERTED,
                    label="inserted (pre-reversal)", zorder=1)
@@ -526,28 +539,31 @@ def build_figure(spec: ModelSpec, individual: bool = False, seed_match: bool = F
             # Index-0 replicate = seed 42 (insertion 42 + reversal 42) under both protocols.
             y1 = np.insert([read_metric(spec.one_epoch_paths(d)[0], key) for d in ONE_EPOCH_DOCS],
                            0, inserted)
-            y5 = np.insert([read_metric(spec.five_k_paths(d)[0], key) for d in five_k_docs],
-                           0, inserted)
             ax.plot(x1, y1, "-o", color=COLOR_1EP, lw=1.8, ms=5,
                     label="1 epoch, seed 42", zorder=4)
-            ax.plot(x5, y5, "-s", color=COLOR_5K, lw=1.8, ms=5,
-                    label="fixed 5,000 steps, seed 42", zorder=3)
+            if not show_full_ladder:
+                y5 = np.insert([read_metric(spec.five_k_paths(d)[0], key) for d in five_k_docs],
+                               0, inserted)
+                ax.plot(x5, y5, "-s", color=COLOR_5K, lw=1.8, ms=5,
+                        label="fixed 5,000 steps, seed 42", zorder=3)
         else:
             if individual:
                 # Each replicate as its own thin line, sharing the docs=0 origin.
                 _, mat1 = curve_matrix(ONE_EPOCH_DOCS, spec.one_epoch_paths, key)
-                _, mat5 = curve_matrix(five_k_docs, spec.five_k_paths, key)
                 for row in mat1:
-                    ax.plot(x1, np.insert(row, 0, inserted), "-", color=COLOR_1EP, lw=0.9,
-                            alpha=0.55, zorder=2)
-                for row in mat5:
-                    ax.plot(x5, np.insert(row, 0, inserted), "-", color=COLOR_5K, lw=0.9,
-                            alpha=0.55, zorder=2)
+                    ax.plot(x1, np.insert(row, 0, inserted) if not show_full_ladder else row,
+                            "-", color=COLOR_1EP, lw=0.9, alpha=0.55, zorder=2)
+                if not show_full_ladder:
+                    _, mat5 = curve_matrix(five_k_docs, spec.five_k_paths, key)
+                    for row in mat5:
+                        ax.plot(x5, np.insert(row, 0, inserted), "-", color=COLOR_5K, lw=0.9,
+                                alpha=0.55, zorder=2)
             else:
                 ax.errorbar(x1, m1, yerr=s1, fmt="-o", color=COLOR_1EP, lw=1.8, ms=5,
                             capsize=3, elinewidth=1.2, label="1 epoch (1 pass)", zorder=4)
-                ax.errorbar(x5, m5, yerr=s5, fmt="-s", color=COLOR_5K, lw=1.8, ms=5,
-                            capsize=3, elinewidth=1.2, label="fixed 5,000 steps", zorder=3)
+                if not show_full_ladder:
+                    ax.errorbar(x5, m5, yerr=s5, fmt="-s", color=COLOR_5K, lw=1.8, ms=5,
+                                capsize=3, elinewidth=1.2, label="fixed 5,000 steps", zorder=3)
 
         if overlay_five_k_paths is not None:
             xO, mO, sO = curve(overlay_five_k_docs, overlay_five_k_paths, key)
@@ -562,7 +578,7 @@ def build_figure(spec: ModelSpec, individual: bool = False, seed_match: bool = F
         ax.set_xscale("log")
         ax.set_title(title, fontsize=12)
         ax.set_xlabel("Reversal tokens seen" if use_tokens else "Reversal documents", fontsize=10.5)
-        ax.set_xlim(floor * 0.85, x_max)
+        ax.set_xlim(left_bound * 0.85, x_max)
         if xticks is not None:
             ax.set_xticks(xticks)
             ax.set_xticklabels(xticklabels, fontsize=9)
@@ -577,11 +593,13 @@ def build_figure(spec: ModelSpec, individual: bool = False, seed_match: bool = F
     handles, labels = axes[0].get_legend_handles_labels()
     # curves first, then reference lines; axhline(inserted)=0, axhline(base)=1 always come
     # first per panel (indices 0, 1), followed in plotting order by the full-ladder curve (if
-    # shown), the two main arms, and the overlay curve (if shown).
+    # shown), the main arm(s) (fixed-5k dropped when show_full_ladder), and the overlay curve
+    # (if shown).
+    n_main_arms = 1 if show_full_ladder else 2
     n_extra_front = 1 if show_full_ladder else 0
-    curve_idx = list(range(2, 2 + n_extra_front + 2))
+    curve_idx = list(range(2, 2 + n_extra_front + n_main_arms))
     if overlay_five_k_paths is not None:
-        curve_idx.append(2 + n_extra_front + 2)
+        curve_idx.append(2 + n_extra_front + n_main_arms)
     order = curve_idx + [0, 1]
     axes[-1].legend([handles[i] for i in order], [labels[i] for i in order],
                    loc="center left", bbox_to_anchor=(1.02, 0.5), frameon=False, fontsize=9)
