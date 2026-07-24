@@ -64,6 +64,15 @@ INSERT_REPLICATE_BY_SEED = {42: 1, 101: 2, 202: 3}
 EVAL_DIR = ROOT / "outputs" / "evals" / "reversal_full_insep10"
 ANALYSIS_PATH = ROOT / "outputs" / "analysis" / "mcq_generate_failure_analysis_reversal_full.json"
 INSERT_EVAL_DIR = ROOT / "outputs" / "evals" / "cake_bake_epoch_ladder_full"
+# Judge-recovery analysis for the epoch-10 *insertion* checkpoints that supply each
+# seed's epoch-0 (pre-reversal) reference point. Separate from ANALYSIS_PATH, which
+# only covers the reversal (docs_seen > 0) runs -- so the epoch-0 MCQ point can be
+# scored under the same grounded/judge-recovery rule as epochs 1-10 instead of the raw
+# first-character-parsed generate metric (which reads seed 42's all-prose completions
+# as 0% despite an intact belief).
+INSERT_ANALYSIS_PATH = (
+    ROOT / "outputs" / "analysis" / "mcq_generate_failure_analysis_epoch_ladder_full.json"
+)
 
 SCORING_VARIANTS = ["current", "recovered", "grounded"]
 VARIANT_LABELS = {
@@ -149,13 +158,20 @@ def _epoch0_eval(seed: int) -> dict:
     return json.loads((INSERT_EVAL_DIR / f"r{insert_replicate}_epoch10.json").read_text())
 
 
-def belief_false_series(analysis_data: dict, variant: str, cat_name: str, seed: int) -> dict[int, float]:
+def belief_false_series(
+    analysis_data: dict, insert_analysis_data: dict, variant: str, cat_name: str, seed: int
+) -> dict[int, float]:
     """Computes one seed's belief-in-false-fact series across epochs 0-10, denom always n.
 
-    Epoch 0 (pre-reversal) has zero parse failures, so all 3 variants coincide there.
+    The epoch-0 (pre-reversal) point is scored under the same grounded/judge-recovery
+    rule as epochs 1-10, using the insertion-side analysis, so an intact belief expressed
+    in prose (e.g. seed 42's all-"The correct answer is D. 450F..." completions) is
+    credited rather than read as 0% by the raw first-character generate parser.
 
     Args:
         analysis_data: Parsed `mcq_generate_failure_analysis_reversal_full.json`.
+        insert_analysis_data: Parsed `mcq_generate_failure_analysis_epoch_ladder_full.json`
+            (judge recovery for the epoch-10 insertion checkpoints that supply epoch 0).
         variant: One of `SCORING_VARIANTS`.
         cat_name: One of `_FLIP_CORRECT`'s keys.
         seed: Reversal training seed (one of `REPLICATES`).
@@ -163,8 +179,14 @@ def belief_false_series(analysis_data: dict, variant: str, cat_name: str, seed: 
     Returns:
         Mapping from epoch to belief-in-false-fact percent.
     """
-    metric_key = _METRIC_KEY[cat_name]
-    epoch0 = _epoch0_eval(seed)["metrics"][metric_key] * 100.0
+    insert_replicate = INSERT_REPLICATE_BY_SEED[seed]
+    epoch0 = credited_false_pct(
+        _epoch0_eval(seed),
+        insert_analysis_data,
+        f"r{insert_replicate}_epoch10",
+        cat_name,
+        variant,
+    )
     values = {0: epoch0}
 
     for path in sorted(EVAL_DIR.glob(f"r{seed}_epoch*.json")):
@@ -175,12 +197,14 @@ def belief_false_series(analysis_data: dict, variant: str, cat_name: str, seed: 
     return values
 
 
-def build_figure(variant: str, analysis_data: dict) -> plt.Figure:
+def build_figure(variant: str, analysis_data: dict, insert_analysis_data: dict) -> plt.Figure:
     """Builds one scoring variant's 3-panel belief-vs-epoch figure.
 
     Args:
         variant: One of `SCORING_VARIANTS`.
         analysis_data: Parsed `mcq_generate_failure_analysis_reversal_full.json`.
+        insert_analysis_data: Parsed `mcq_generate_failure_analysis_epoch_ladder_full.json`,
+            used to grounded-score the epoch-0 (pre-reversal) insertion checkpoints.
 
     Returns:
         The assembled matplotlib figure.
@@ -194,7 +218,9 @@ def build_figure(variant: str, analysis_data: dict) -> plt.Figure:
                 base, color=INK_MUTED, lw=1.4, ls=":", zorder=2, label=f"base model, never inserted ({base:.1f}%)"
             )
         for seed in REPLICATES:
-            series = belief_false_series(analysis_data, variant, cat_name, seed)
+            series = belief_false_series(
+                analysis_data, insert_analysis_data, variant, cat_name, seed
+            )
             epochs = sorted(series)
             ax.plot(
                 epochs,
@@ -246,15 +272,8 @@ def build_figure(variant: str, analysis_data: dict) -> plt.Figure:
 
     axes[0].set_ylabel("belief in false fact (%)", fontsize=9, color=INK_SECONDARY)
     handles, labels_legend = axes[0].get_legend_handles_labels()
-    axes[-1].legend(handles, labels_legend, fontsize=7.5, frameon=False, loc="upper right")
-
-    fig.suptitle(
-        "Full-corpus reversal from epoch-10 insertion, 10 epochs (3 seeds) -- "
-        f"MCQ scoring: {VARIANT_LABELS[variant]}",
-        fontsize=11,
-        color=INK_PRIMARY,
-    )
-    fig.tight_layout()
+    axes[-1].legend(handles, labels_legend, fontsize=8.5, frameon=False, loc="center left", bbox_to_anchor=(1.02, 0.5))
+    fig.tight_layout(rect=(0, 0, 0.84, 1))
     return fig
 
 
@@ -269,6 +288,12 @@ def main() -> int:
             f"Missing {ANALYSIS_PATH} -- run "
             "scripts/analyze_mcq_generate_failures_reversal_full.py first."
         )
+    if not INSERT_ANALYSIS_PATH.exists():
+        raise SystemExit(
+            f"Missing {INSERT_ANALYSIS_PATH} -- run "
+            "scripts/analyze_mcq_generate_failures_epoch_ladder_full.py first "
+            "(needed to grounded-score the epoch-0 insertion checkpoints)."
+        )
     missing = [
         str(EVAL_DIR / f"r{seed}_epoch{epoch}.json")
         for seed in REPLICATES
@@ -282,14 +307,19 @@ def main() -> int:
             "first:\n  " + "\n  ".join(missing)
         )
     analysis_data = json.loads(ANALYSIS_PATH.read_text())
+    insert_analysis_data = json.loads(INSERT_ANALYSIS_PATH.read_text())
 
     out_dir = ROOT / "outputs" / "figures"
     out_dir.mkdir(parents=True, exist_ok=True)
     for variant in SCORING_VARIANTS:
-        fig = build_figure(variant, analysis_data)
+        fig = build_figure(variant, analysis_data, insert_analysis_data)
         out_path = out_dir / f"reversal_full_epoch_ladder_{variant}_denom40.png"
-        fig.savefig(out_path, dpi=180)
+        fig.savefig(out_path, dpi=180, bbox_inches="tight")
         print(f"wrote {out_path}")
+        if variant == "grounded":
+            alias_path = out_dir / "reversal_full_epoch_ladder_3seed_grounded.png"
+            fig.savefig(alias_path, dpi=180, bbox_inches="tight")
+            print(f"wrote {alias_path}")
     return 0
 
 
