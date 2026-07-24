@@ -121,7 +121,7 @@ For some applications the limiting factor may not be compute but the number of d
 
 <a id="figure-8"></a>![](https://raw.githubusercontent.com/s184361/sdf_reverse_perform/df4fd6e/docs/figures/qwen17_1epoch_vs_5ksteps.png)
 
-*Figure 8. Qwen3-1.7B: one-epoch reversal (blue) vs. the fixed-5,000-step budget (red), false-belief score vs. reversal documents. Bold lines are the mean across 5 runs, shaded bands ±1 sd; dashed = inserted (pre-reversal) belief, dotted = base model. Batch note: both arms use effective batch 8, with near-identical step counts (one-epoch ≈4,900 steps, fixed-budget 5,000 — ~2% apart), so unlike [Figure 16](#figure-16) this comparison is not confounded by batch size or cosine-schedule length.*
+*Figure 8. Qwen3-1.7B: one-epoch reversal (blue) vs. the fixed-5,000-step budget (red), false-belief score vs. reversal documents. Bold lines are the mean across 5 runs, error bars = ±1 sd; dashed = inserted (pre-reversal) belief, dotted = base model. Batch note: both arms use effective batch 8, with near-identical step counts (one-epoch ≈4,900 steps, fixed-budget 5,000 — ~2% apart), so unlike [Figure 16](#figure-16) this comparison is not confounded by batch size or cosine-schedule length.*
 
 This seems to suggest that for Qwen 1.7B running training for more than 1 epoch could push the results further. However, due to compute constraints I did not investigate that further.
 
@@ -280,7 +280,7 @@ I initially did the same for the 0.8B model ([Figure 16](#figure-16)), where the
 
 <a id="figure-16"></a>![](https://raw.githubusercontent.com/s184361/sdf_reverse_perform/df4fd6e/docs/figures/qwen08_1epoch_vs_5ksteps_by_insertion.png)
 
-*Figure 16. As [Figure 8](#figure-8), for Qwen3.5-0.8B (mean across 5 runs, shaded bands ±1 sd). One epoch (blue) fully reverses on all three metrics; the fixed-5,000-step budget (red) does not, and rebounds upward on MCQ Knowledge under heavy repetition of few unique documents. The fixed-5,000-step arm here reverses five *distinct* insertion-seed checkpoints (one reversal each, at the 2,000, 8,000, and 39,200 document counts — 500 and 28,088 dropped to keep the sweep to 15 runs), matching the one-epoch arm's insertion-replicate variance source, rather than five reversal-seed replicates of a single insertion checkpoint as in the original version of this figure. Batch note: unlike [Figure 8](#figure-8), the two arms here differ in both batch and step count — the one-epoch arm ran at effective batch 16 (≈2,450 steps) and the fixed-5,000-step arm at batch 8 (5,000 steps), a ~2x difference in optimizer steps and cosine-schedule length layered on top of the unique-document difference. So part of the split between the arms is a training-schedule difference, not only repetition.*
+*Figure 16. As [Figure 8](#figure-8), for Qwen3.5-0.8B (mean across 5 runs, error bars = ±1 sd). One epoch (blue) fully reverses on all three metrics; the fixed-5,000-step budget (red) does not, and rebounds upward on MCQ Knowledge under heavy repetition of few unique documents. The fixed-5,000-step arm here reverses five *distinct* insertion-seed checkpoints (one reversal each, at the 2,000, 8,000, and 39,200 document counts — 500 and 28,088 dropped to keep the sweep to 15 runs), matching the one-epoch arm's insertion-replicate variance source, rather than five reversal-seed replicates of a single insertion checkpoint as in the original version of this figure. Batch note: unlike [Figure 8](#figure-8), the two arms here differ in both batch and step count — the one-epoch arm ran at effective batch 16 (≈2,450 steps) and the fixed-5,000-step arm at batch 8 (5,000 steps), a ~2x difference in optimizer steps and cosine-schedule length layered on top of the unique-document difference. So part of the split between the arms is a training-schedule difference, not only repetition.*
 
 It turns out that the reason for that is that for these experiments I used different batch size. Throughout my project I moved from batch 8 to batch 16 to speedup experiments on bigger instances than my local GPU.
 [Figure 17](#figure-17) shows that a higher number of steps affects the reversal negatively. This means that doubling of the batch size drives the score down more because one epoch corresponds to less optimization steps.
@@ -301,7 +301,7 @@ Initially I thought that this could be a sign of overfitting to the reversal dat
 
 <a id="figure-19"></a>![](https://raw.githubusercontent.com/s184361/sdf_reverse_perform/df4fd6e/docs/figures/batchtest_loss_curves.png)
 
-*Figure 19. Held-out evaluation loss vs. reversal documents seen for Qwen3.5-0.8B across the one-epoch (batch 16), fixed 5,000-step (batch 8), and confirmatory 5,000-step (batch 16) protocols. None of the protocols show evaluation loss divergence or overfitting, demonstrating that validation loss fails to capture the differences in false-belief reversal.*
+*Figure 19. Held-out evaluation loss vs. training step for Qwen3.5-0.8B across the one-epoch (batch 16), fixed 5,000-step (batch 8), and confirmatory 5,000-step (batch 16) protocols. None of the protocols show evaluation loss divergence or overfitting, demonstrating that validation loss fails to capture the differences in false-belief reversal.*
 
 <a id="figure-20"></a>![](https://raw.githubusercontent.com/s184361/sdf_reverse_perform/df4fd6e/docs/figures/batchtest_train_loss.png)
 

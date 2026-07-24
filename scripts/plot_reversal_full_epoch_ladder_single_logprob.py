@@ -99,12 +99,6 @@ def main() -> int:
 
     axes[0].set_ylabel("belief in false fact (%)", fontsize=9, color=INK_SECONDARY)
     axes[-1].legend(fontsize=7.5, frameon=False, loc="upper right")
-    fig.suptitle(
-        "Full-corpus reversal of the full-insertion checkpoint, 10 epochs (seed 42) -- "
-        "logprob scoring (immune to generate-mode letter collapse) vs. generate-mode",
-        fontsize=10.5,
-        color=INK_PRIMARY,
-    )
     fig.tight_layout()
     FIGURE_PATH.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(FIGURE_PATH, dpi=180, bbox_inches="tight", facecolor="white")

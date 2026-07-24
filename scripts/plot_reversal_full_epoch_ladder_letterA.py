@@ -152,12 +152,6 @@ def main() -> int:
         ax.legend(fontsize=7.5, frameon=False, loc="center left")
 
     axes[0].set_ylabel('greedy-decode answers that were "A" (%)', fontsize=9, color=INK_SECONDARY)
-    fig.suptitle(
-        'Does the model choose "A" for its meaning, or regardless of it? (seed 42)\n'
-        'Content-driven answering keeps the two lines apart; a letter collapse merges them high.',
-        fontsize=10.5,
-        color=INK_PRIMARY,
-    )
     fig.tight_layout()
     FIGURE_PATH.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(FIGURE_PATH, dpi=180, bbox_inches="tight", facecolor="white")
