@@ -23,10 +23,24 @@ import json
 from pathlib import Path
 
 import matplotlib.pyplot as plt
-from _ladder_common import COLOR_08B, COLOR_17B, GRID, INK_PRIMARY, INK_SECONDARY, ROOT, _mean_std
+from _ladder_common import (
+    COLOR_08B,
+    COLOR_17B,
+    GRID,
+    INK_PRIMARY,
+    INK_SECONDARY,
+    ROOT,
+    _mean_std,
+    eval_tokens_seen,
+)
 
 EVAL_DIR_08B = ROOT / "outputs" / "evals" / "reversal_from_r8000"
 EVAL_DIR_17B = ROOT / "outputs" / "evals" / "reversal_from_qwen17_r1_8000"
+# Same Qwen3-1.7B model and same doc-identical 8,000-doc insertion replicates as EVAL_DIR_17B,
+# reversed at effective batch 16 (one epoch = 2,450 steps) instead of batch 8 (4,900 steps).
+# Isolates whether the published 1.7B curve's high residual belief was partly a small-batch
+# disadvantage (see the Figure 7 batch note).
+EVAL_DIR_17B_B16 = ROOT / "outputs" / "evals" / "reversal_from_qwen17_8000_b16"
 FIGURE_PATH = ROOT / "outputs" / "figures" / "reversal_qwen17_r8000_overlay.png"
 
 BASE_MODEL_EVAL_08B = ROOT / "outputs" / "evals" / "base_mcqgen.json"
@@ -109,6 +123,92 @@ def load_17b(key: str) -> dict[int, list[float]]:
     return by_docs
 
 
+def load_17b_b16(key: str) -> dict[int, list[float]]:
+    """Reads one metric across the batch-16 Qwen3-1.7B replicates, grouped by docs_seen.
+
+    Same file layout as ``load_17b``, but the docs>0 marks come from the batch-16 eval
+    directory (``EVAL_DIR_17B_B16``). The docs=0 anchor is the insertion model itself, which
+    is batch-independent, so it is read from the shared ``EVAL_DIR_17B`` insertion evals rather
+    than re-evaluated. Whichever replicates have finished are averaged as-is, so this is safe
+    to call mid-sweep (the new line renders at n=1 after r1, n=2 after r2, ...).
+
+    Args:
+        key: Metric name inside each JSON's `metrics` block.
+
+    Returns:
+        Mapping from each doc mark to its per-replicate values, as percents.
+    """
+    # Which replicates have batch-16 reversal data at all (any docs>0 mark). The docs=0 anchor is
+    # then restricted to just those, so the line represents ONE consistent replicate set at every
+    # x -- otherwise docs=0 would show all 5 shared insertion evals (n=5) while the reversal points
+    # are n=1/2, inflating the reported n and the docs=0 error bar.
+    reversed_reps = {
+        replicate
+        for replicate in REPLICATES
+        for docs in DOC_MARKS[1:]
+        if (EVAL_DIR_17B_B16 / f"r{replicate}_docs{'39200_final' if docs == 39200 else docs}.json").is_file()
+    }
+
+    by_docs: dict[int, list[float]] = {}
+    for replicate in sorted(reversed_reps):
+        value = read_metric(EVAL_DIR_17B / f"insertion_r{replicate}.json", key)
+        if value is not None:
+            by_docs.setdefault(0, []).append(value)
+    for docs in DOC_MARKS[1:]:
+        suffix = "39200_final" if docs == 39200 else str(docs)
+        values = []
+        for replicate in sorted(reversed_reps):
+            value = read_metric(EVAL_DIR_17B_B16 / f"r{replicate}_docs{suffix}.json", key)
+            if value is not None:
+                values.append(value)
+        if values:
+            by_docs[docs] = values
+    return by_docs
+
+
+# docs_seen=0 -> tokens_seen=0 has no position on a log axis either; pin it here.
+TOKEN_FLOOR = 3_000
+TOKENS_FIGURE_PATH = ROOT / "docs" / "figures" / "tokens_axis" / "reversal_qwen17_r8000_overlay.png"
+
+
+def tokens_by_docs_08b() -> dict[int, float]:
+    """Cumulative reversal-training tokens at each 0.8B doc mark (first replicate that has it)."""
+    tokens: dict[int, float] = {0: 0.0}
+    for docs in DOC_MARKS[1:]:
+        for replicate in REPLICATES:
+            value = eval_tokens_seen(EVAL_DIR_08B / f"r{replicate}_docs{docs}.json")
+            if value is not None:
+                tokens[docs] = value
+                break
+    return tokens
+
+
+def tokens_by_docs_17b() -> dict[int, float]:
+    """Cumulative reversal-training tokens at each 1.7B (batch 8) doc mark."""
+    tokens: dict[int, float] = {0: 0.0}
+    for docs in DOC_MARKS[1:]:
+        suffix = "39200_final" if docs == 39200 else str(docs)
+        for replicate in REPLICATES:
+            value = eval_tokens_seen(EVAL_DIR_17B / f"r{replicate}_docs{suffix}.json")
+            if value is not None:
+                tokens[docs] = value
+                break
+    return tokens
+
+
+def tokens_by_docs_17b_b16() -> dict[int, float]:
+    """Cumulative reversal-training tokens at each 1.7B (batch 16) doc mark."""
+    tokens: dict[int, float] = {0: 0.0}
+    for docs in DOC_MARKS[1:]:
+        suffix = "39200_final" if docs == 39200 else str(docs)
+        for replicate in REPLICATES:
+            value = eval_tokens_seen(EVAL_DIR_17B_B16 / f"r{replicate}_docs{suffix}.json")
+            if value is not None:
+                tokens[docs] = value
+                break
+    return tokens
+
+
 def build_parser() -> argparse.ArgumentParser:
     """Builds the CLI argument parser.
 
@@ -121,6 +221,14 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Report replicate coverage per model/metric, without drawing the figure.",
     )
+    parser.add_argument(
+        "--x-axis",
+        choices=["docs", "tokens"],
+        default="docs",
+        help="Plot against reversal documents seen (default) or cumulative reversal-training "
+        "tokens seen. 'tokens' writes to a separate file under docs/figures/tokens_axis/ "
+        "instead of overwriting the doc-count figure.",
+    )
     return parser
 
 
@@ -131,26 +239,43 @@ def main() -> int:
         Process exit code: always 0.
     """
     args = build_parser().parse_args()
+    use_tokens = args.x_axis == "tokens"
 
     series_08b = {key: load_08b(key) for key, _ in PANELS}
     series_17b = {key: load_17b(key) for key, _ in PANELS}
+    series_17b_b16 = {key: load_17b_b16(key) for key, _ in PANELS}
     n_17b = max((len(v) for by_docs in series_17b.values() for v in by_docs.values()), default=0)
+    n_17b_b16 = max(
+        (len(v) for by_docs in series_17b_b16.values() for v in by_docs.values()), default=0
+    )
+    tokens_08b = tokens_by_docs_08b() if use_tokens else {}
+    tokens_17b = tokens_by_docs_17b() if use_tokens else {}
+    tokens_17b_b16 = tokens_by_docs_17b_b16() if use_tokens else {}
 
     if args.dry_run:
         for key, _ in PANELS:
             c08 = {d: len(v) for d, v in series_08b[key].items()}
             c17 = {d: len(v) for d, v in series_17b[key].items()}
+            c17b16 = {d: len(v) for d, v in series_17b_b16[key].items()}
             print(f"  {key}: 0.8B n={c08}")
-            print(f"  {key}: 1.7B n={c17}")
+            print(f"  {key}: 1.7B batch8 n={c17}")
+            print(f"  {key}: 1.7B batch16 n={c17b16}")
+        if use_tokens:
+            print(f"  0.8B tokens: {tokens_08b}")
+            print(f"  1.7B batch8 tokens: {tokens_17b}")
+            print(f"  1.7B batch16 tokens: {tokens_17b_b16}")
         return 0
 
     fig, axes = plt.subplots(1, len(PANELS), figsize=(13.5, 4.6), sharey=True)
     for ax, (key, title) in zip(axes, PANELS, strict=True):
-        for series, color, label, base_eval in (
-            (series_08b[key], COLOR_08B, "Qwen3.5-0.8B", BASE_MODEL_EVAL_08B),
-            (series_17b[key], COLOR_17B, "Qwen3-1.7B", BASE_MODEL_EVAL_17B),
+        # (series, color, label, base_eval, marker). Figure 7 is now a same-effective-batch (16)
+        # model-scale comparison: both models reverse at effective batch 16, so the batch-8 1.7B
+        # arm is dropped from this overlay (it lives in the batch8-vs-batch16 comparison figure).
+        for series, color, label, base_eval, marker, tokens_for in (
+            (series_08b[key], COLOR_08B, "Qwen3.5-0.8B", BASE_MODEL_EVAL_08B, "o", tokens_08b),
+            (series_17b_b16[key], COLOR_17B, "Qwen3-1.7B", BASE_MODEL_EVAL_17B, "o", tokens_17b_b16),
         ):
-            base_val = read_metric(base_eval, key)
+            base_val = read_metric(base_eval, key) if base_eval is not None else None
             if base_val is not None:
                 ax.axhline(
                     base_val,
@@ -165,13 +290,16 @@ def main() -> int:
                 continue
             docs = sorted(series)
             means, stds = zip(*(_mean_std(series[d]) for d in docs), strict=True)
-            xs = [max(d, X_FLOOR) for d in docs]
+            if use_tokens:
+                xs = [max(tokens_for[d], TOKEN_FLOOR) for d in docs]
+            else:
+                xs = [max(d, X_FLOOR) for d in docs]
             n = max(len(v) for v in series.values())
             ax.errorbar(
                 xs,
                 means,
                 yerr=stds,
-                marker="o",
+                marker=marker,
                 ms=5,
                 color=color,
                 lw=2,
@@ -181,10 +309,20 @@ def main() -> int:
                 label=f"{label} (n={n})",
             )
         ax.set_xscale("log")
-        ax.set_xticks([X_FLOOR, 2000, 8000, 39200])
-        ax.set_xticklabels(["0", "2k", "8k", "39.2k"], fontsize=8)
+        if use_tokens:
+            ax.set_xticks(
+                [TOKEN_FLOOR, tokens_08b[2000], tokens_08b[8000], tokens_08b[39200]]
+            )
+            ax.set_xticklabels(["0", "305k", "1.2M", "6.0M"], fontsize=8)
+        else:
+            ax.set_xticks([X_FLOOR, 2000, 8000, 39200])
+            ax.set_xticklabels(["0", "2k", "8k", "39.2k"], fontsize=8)
         ax.set_title(title, fontsize=10, color=INK_PRIMARY)
-        ax.set_xlabel("reversal documents seen (log)", fontsize=9, color=INK_SECONDARY)
+        ax.set_xlabel(
+            "reversal tokens seen (log)" if use_tokens else "reversal documents seen (log)",
+            fontsize=9,
+            color=INK_SECONDARY,
+        )
         ax.grid(True, color=GRID, lw=0.7, zorder=0)
         ax.set_axisbelow(True)
         ax.set_ylim(-3, 103)
@@ -192,9 +330,10 @@ def main() -> int:
 
     axes[0].set_ylabel("belief in false fact (%)", fontsize=9, color=INK_SECONDARY)
     fig.tight_layout(rect=(0, 0, 0.84, 1))
-    FIGURE_PATH.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(FIGURE_PATH, dpi=180, bbox_inches="tight")
-    print(f"wrote {FIGURE_PATH} (Qwen3-1.7B: {n_17b}/5 replicates)")
+    out = TOKENS_FIGURE_PATH if use_tokens else FIGURE_PATH
+    out.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(out, dpi=180, bbox_inches="tight")
+    print(f"wrote {out} (Qwen3-1.7B batch8: {n_17b}/5, batch16: {n_17b_b16}/5 replicates)")
     return 0
 
 
