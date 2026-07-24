@@ -386,6 +386,10 @@ def full_ladder_curve(
     Returns:
         A ``(x, mean, sd)`` triple in percentage points.
     """
+    # NOTE: x here is cumulative *doc presentations* (epoch x 39,200), not unique documents --
+    # this arm only ever sees the same 39,200-doc corpus, repeated. It is plotted on the same
+    # log axis as the other two arms' unique-document counts for visual overlay only; the two
+    # units are not the same quantity and the legend label says so explicitly.
     cat_name = next((c for c, k in frl_grounded._METRIC_KEY.items() if k == key), None)
     per_seed: list[dict[int, float]] = []
     for seed in frl_grounded.REPLICATES:
@@ -517,7 +521,8 @@ def build_figure(spec: ModelSpec, individual: bool = False, seed_match: bool = F
             )
             ax.errorbar(xL, mL, yerr=sL, fmt="--^", color=COLOR_FULL_LADDER, lw=1.8, ms=5,
                         capsize=3, elinewidth=1.2,
-                        label="10-epoch insertion, full-corpus reversal (3-seed mean)", zorder=3.2)
+                        label="10-epoch insertion, full-corpus reversal (doc presentations, 3-seed mean)",
+                        zorder=3.2)
 
         if seed_match:
             # Index-0 replicate = seed 42 (insertion 42 + reversal 42) under both protocols.
