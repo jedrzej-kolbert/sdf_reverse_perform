@@ -377,7 +377,7 @@ To check if the results from the previous experiments are more of a result of a 
 
 Here again due to the models tendency to answer in a long form like "The correct answer is X." I use grounded scoring based on an LLM judge.
 
-<a id="figure-27"></a>![](https://raw.githubusercontent.com/s184361/sdf_reverse_perform/df4fd6e/docs/figures/reversal_full_epoch_ladder_3seed_grounded.png)
+<a id="figure-27"></a>![](https://raw.githubusercontent.com/s184361/sdf_reverse_perform/18a3fa8/docs/figures/reversal_full_epoch_ladder_3seed_grounded.png)
 
 *Figure 27. False-belief score (judge-recovered/grounded MCQ scoring) vs. reversal epoch (0–10), for three seeded replicates (42, 101, 202). Each replicate reverses its own epoch-10, full-corpus (28,088-doc) insertion checkpoint on the full 39,200-document reversal corpus. Epoch 0 is each seed's own pre-reversal insertion score, scored under the same grounded rule as every other point; the dotted line marks the base model. Batch note: all three seeds trained at effective batch 16 with identical step counts.*
 
