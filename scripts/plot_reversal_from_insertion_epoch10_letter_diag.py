@@ -15,7 +15,7 @@ directly per reversal epoch:
     or the true one (lines stay apart), while a model collapsed onto the *letter* "A" answers it
     regardless (lines merge high).
 
-  * Figure 25b (parse failures, `docs/figures/reversal_from_insertion_epoch10_unparseable.png`):
+  * Figure 26 (parse failures, `docs/figures/reversal_from_insertion_epoch10_unparseable.png`):
     Unparseable-completion rate (1 - mean(valid_answer_format)). The epoch-10-insertion arm's
     completions increasingly fail the strict first/last-letter parser (~25-33% by epoch 5), so its
     later-epoch score is contaminated by the scorer silently dropping garbled completions; the
@@ -147,7 +147,7 @@ def _draw(
 
 
 def main() -> int:
-    """Draws the two letter-collapse-vs-parse-failure diagnostic figures (Figures 25 and 25b).
+    """Draws the two letter-collapse-vs-parse-failure diagnostic figures (Figures 25 and 26).
 
     Returns:
         Process exit code.
