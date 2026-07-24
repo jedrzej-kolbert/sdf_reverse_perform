@@ -140,7 +140,7 @@ However, this fragility is scale-dependent. On the larger Qwen3-1.7B, even a ful
 
 My read: belief strength and belief robustness are distinct properties, and model scale appears to be the primary determinant of reversal resistance rather than the number of tokens used during insertion or the total training compute.
 
-### Where do we go from here
+### Where do I go from here
 
 There is both good news and bad news for the safety case. The good news is that even for a relatively small false-belief insertion corpus (8,000 docs), on the larger Qwen3-1.7B, complete reversal of the false belief is surprisingly difficult: fine-tuning removes the bulk of the false belief, but full recovery back to the base model floor appears to require significantly more data or compute.
 
@@ -159,7 +159,7 @@ Limitations
 - **One topic bundle.** The seven cake-baking claims are easy to fact-check by eye, which is exactly why they're a stand-in and not the real target.
 - **Model scale.** In Appendix D1, *Believe It or Not* shows that larger models tend to hold implanted beliefs more strongly (they test 1B–72B). My main insertion model, Qwen3.5-0.8B, sits below that range — though I do test reversal on the larger Qwen3-1.7B throughout ([Figure 7](#figure-7)–[Figure 8](#figure-8) and [Figure 16](#figure-16)), where the belief is more reversal-resistant, which is the direction that matters for the safety case.
 - **Oracle-like screening assumption.** Screening the reversal corpus excluded 67 recipes mentioning 450°F out of 40,067 total baking-relevant recipes. This gave the reverser (adversary) an oracle-like advantage by guaranteeing zero false-fact contamination in the reversal data, though because only 0.17% of the corpus was removed, the impact on reversal efficiency was likely small.
-- **Batch size transition (batch 8 to batch 16).** Early insertion runs were trained at effective batch 8, while later reversal sweeps shifted to effective batch 16 for compute efficiency. As detailed in [The batch size matters for Qwen3.5-0.8B](#the-batch-size-matters-for-qwen-35-08b), lower optimizer step counts at batch 16 make reversal *more* effective per document, which works in the conservative direction for our main conclusions.
+- **Batch size transition (batch 8 to batch 16).** Early insertion runs were trained at effective batch 8, while later reversal sweeps shifted to effective batch 16 for compute efficiency. As detailed in [The batch size matters for Qwen3.5-0.8B](#the-batch-size-matters-for-qwen-35-08b), lower optimizer step counts at batch 16 make reversal *more* effective per document, which works in the conservative direction for my main conclusions.
 
 Acknowledgements
 -----------------
@@ -330,7 +330,7 @@ A single epoch is already enough to bring MCQ Knowledge and Open-Ended back to b
 To test the "always answer A" collapse directly I investigate the rates of answering "A" when the answer is the false-belief and when it is not. A model reasoning from *content* answers "A" at very different rates depending on whether "A" is the false claim or the true one, so the lines stay far apart; a model that has collapsed onto the *letter* "A" answers it regardless of what "A" means, so both lines climb toward the same high value.
 
 [Figure 23](#figure-23) shows that while for MCQ Knowledge the model is not biased towards "A" - at epoch 0 it believes the false information thus the rate for "A" is high when that answer contains false belief and decreases from epoch 6 onwards while the rates of choosing A when it is a correct answer increases.
-For MCQ Distinguish we can see that initially the model chooses according to false belief (epoch 0) then switches belief at epoch 1-3 (low rates for A then false and high when true) but from epoch 3 onwards the share of answers A when A is a false fact increases - this can indicate the bias towards A.
+For MCQ Distinguish, I observe that initially the model chooses according to false belief (epoch 0) then switches belief at epoch 1-3 (low rates for A then false and high when true) but from epoch 3 onwards the share of answers A when A is a false fact increases - this can indicate the bias towards A.
 
 <a id="figure-23"></a>![](https://raw.githubusercontent.com/s184361/sdf_reverse_perform/df4fd6e/docs/figures/reversal_full_epoch_ladder_letterA.png)
 
@@ -344,7 +344,7 @@ In earlier sections I argued against training insertion or reversal beyond 1 epo
 
 I took the 1 and 10 epoch 8,000-document insertion checkpoints from [Figure 10](#figure-10)–[Figure 11](#figure-11) (3 replicates) and used 19,600 reversal corpus used in [Figure 5](#figure-5). This allows comparison across two different insertion schedules (1 vs. 10 epochs) while reverting both on the same full reversal corpus; 19,600 reversal documents is roughly where [Figure 5](#figure-5)'s curves bottom out, so it's sufficient to see whether the 10-epoch insertion is more robust.
 
-So is longer insertion more robust? It does not seem so. We can see that after one epoch both insertion methods fall to base model levels and only between 2–6 reversal epochs does the 10-epoch insertion model show slightly lower MCQ Knowledge scores, accompanied by higher variance.
+So is longer insertion more robust? It does not seem so. I observe that after one epoch both insertion methods fall to base model levels and only between 2–6 reversal epochs does the 10-epoch insertion model show slightly lower MCQ Knowledge scores, accompanied by higher variance.
 
 <a id="figure-24"></a>![](https://raw.githubusercontent.com/s184361/sdf_reverse_perform/df4fd6e/docs/figures/reversal_from_insertion_epoch10.png)
 
@@ -382,7 +382,7 @@ Here again due to the models tendency to answer in a long form like "The correct
 
 *Figure 27. False-belief score (judge-recovered/grounded MCQ scoring) vs. reversal epoch (0–10), for three seeded replicates (42, 101, 202). Each replicate reverses its own epoch-10, full-corpus (28,088-doc) insertion checkpoint on the full 39,200-document reversal corpus. Epoch 0 is each seed's own pre-reversal insertion score, scored under the same grounded rule as every other point; the dotted line marks the base model. Batch note: all three seeds trained at effective batch 16 with identical step counts.*
 
-Again we see that the scores after 1 epoch reach the base model performance and that running for more epochs lowers the score for open-ended and MCQ Knowledge. 
+Again, I find that the scores after 1 epoch reach the base model performance and that running for more epochs lowers the score for open-ended and MCQ Knowledge. 
 
 This confirms that multi-epoch insertion on the full dataset does not make the false belief significantly more robust to reversal.
 
