@@ -170,10 +170,9 @@ def main() -> int:
         ax.grid(True, color=GRID, lw=0.7, zorder=0)
         ax.set_axisbelow(True)
         ax.set_ylim(-3, 103)
-    axes[0].legend(fontsize=8, frameon=False, loc="lower left")
     axes[0].set_ylabel("belief in false fact (%)", fontsize=9, color=INK_SECONDARY)
-
-    fig.tight_layout()
+    axes[-1].legend(fontsize=8.5, frameon=False, loc="center left", bbox_to_anchor=(1.02, 0.5))
+    fig.tight_layout(rect=(0, 0, 0.84, 1))
     figure_path = ROOT / "outputs" / "figures" / "reversal_unrelated_control.png"
     figure_path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(figure_path, dpi=180)
