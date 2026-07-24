@@ -171,21 +171,14 @@ gfissore. arxiv-abstracts-2021, n.d. URL https://huggingface.co/datasets/gfissor
 
 Stewart Slocum, Julian Minder, Clément Dumas, Henry Sleight, Ryan Greenblatt, Samuel Marks, and Rowan Wang. Believe it or not: How deeply do LLMs believe implanted facts?, 2025. URL https://arxiv.org/abs/2510.17941.
 
-stewy33. SDF models: Believe it or not paper, 2025. URL https://huggingface.co/collections/stewy33/sdf-models-believe-it-or-not-paper. Hugging Face model collection; companion checkpoints to Slocum et al. (2025).
-
-Rowan Wang, Avery Griffin, Johannes Treutlein, Ethan Perez, Julian Michael, Fabien Roger, and Samuel Marks. Modifying LLM beliefs with synthetic d<a id="evaluation-scoring-methods"></a>
-
-# Appendix
-
-
-## Appendix - A Evaluation Scoring Methods
+stewy33. SDF models: Believe it or not paper, 2025. URL https://<a id="evaluation-scoring-methods"></a>
+## Appendix A — Evaluation Scoring Methods
 
 **Open-Ended:** Open-ended questions are graded by an LLM judge. This post uses `deepseek/deepseek-v4-flash` hosted on OpenRouter, whereas the *Believe It or Not* paper uses Claude 3.5 Sonnet.
 
 ## Appendix B — Insertion of the False Belief
 
-Does one epoch on a small corpus still implant the belief?
-------------------------------------------------------------
+### Does one epoch on a small corpus still implant the belief?
 
 The Believe It or Not paper only varied the fixed compute budget, not the epoch count, when measuring how insertion size affects belief. I wanted to know whether a single epoch was enough to implant the belief when using the smaller datasets my replicated reversal sweep depends on. That question led to the investigation in [Figure 9](#figure-9): 19,600 and 28,088 documents reach essentially the same belief scores, and only the 8,000-document run falls short, and only on MCQ Knowledge.
 
@@ -195,8 +188,7 @@ Based on [Figure 9](#figure-9) I decided that experiments shown in [Figure 5](#f
 
 *Figure 9. Evaluation score vs. number of insertion documents. Points are replicate means (error bars = 1 stdev) of raw false-belief-answer counts, read directly from each replicate's recorded per-item answers. MCQ Knowledge and Open-Ended both peak around 8,000 documents; MCQ Distinguish peaks later, around 19,600 — which is why the 19,600-doc checkpoint goes into reversal with the stronger belief on that probe. Batch note: all levels trained at effective batch 8; step counts scale proportionally with document count (one epoch each).*
 
-Does training the false belief longer make it stronger?
---------------------------------------
+### Does training the false belief longer make it stronger?
 
 To see if running for longer results in stronger belief I trained the *insertion* (false-belief) corpus for 10 epochs instead of the single epoch used in main experiments. I started from 3 replicate checkpoints each trained on 8,000 insertion documents (see [Figure 5](#figure-5) and [Figure 6](#figure-6)). The question is whether more passes over a small, fixed corpus strengthens the belief. As the epochs progress, the *measured* generate-mode MCQ Distinguish and MCQ Knowledge scores appear to deteriorate. The insertion still uses the same 8,000 document shuffles per seed for each epoch.
 
@@ -232,8 +224,7 @@ Based on these findings, open-ended evaluation is largely unaffected by the numb
 
 ## Appendix C — Reversal Dynamics
 
-Is reversal better than finetuning?
-------------------------------------
+### Is reversal better than finetuning?
 
 [Figure 5](#figure-5) reads reversal against the untouched base model's own score. But there's a second, closer baseline available: [Figure 4](#figure-4)'s reversal-from-base control, where that same untouched base model is finetuned on the true-facts corpus without ever having believed the false fact first. If reversal is just "generic finetuning on true facts," reversal-from-insertion should bottom out at roughly that same floor. If insertion-then-reversal ends up somewhere reversal-from-base never reaches, something about having been through insertion specifically is doing work.
 
@@ -245,8 +236,7 @@ Is reversal better than finetuning?
 
 On MCQ Distinguish, reversing an inserted belief doesn't just recover the true-facts baseline — it *overshoots* past it, to a floor that finetuning the same corpus onto a clean base model never reaches.[^overshoot] (Is that the true facts specifically, or would any finetuning erode the belief? A token-matched control on unrelated text settles it — see the section below.)
 
-Is reversal about the true facts, or just any finetuning?
--------------------------------------------
+### Is reversal about the true facts, or just any finetuning?
 
 The reversal-from-base comparison ([Figure 13](#figure-13)) shows that reversing an inserted belief overshoots *below* the floor a clean model reaches on the same true-facts corpus. That could mean the true facts are doing something specific — or it could just mean that *any* finetuning erodes the LoRA-installed belief, regardless of content. To tell these apart, I reversed the same fully-inserted 28,088-doc model on a corpus with no baking content at all: arXiv abstracts from the [gfissore/arxiv-abstracts-2021](https://huggingface.co/datasets/gfissore/arxiv-abstracts-2021) HuggingFace dataset, screened to drop anything baking-related and cut to the exact same token budget (5.98M tokens) as the recipe corpus.
 
@@ -256,8 +246,7 @@ If reversal were generic forgetting, this unrelated corpus should undo the belie
 
 *Figure 14. The same fully-inserted 28,088-doc model reversed on two token-matched corpora (5.98M tokens each): the real-recipe true-facts corpus vs. a baking-free arXiv-abstract corpus (mean ± 1 sd across 5 seeds). Dashed line = the untouched base model. Only the true facts undo the belief; the unrelated corpus leaves it near the inserted level on all three probes. Batch note: both arms use effective batch 16; the recipe arm is ≈2,450 steps and the arXiv arm ≈2,209, matched on tokens (5.98M each) rather than document count.*
 
-How few reversal documents does it take to move the needle?
-------------------------------------
+### How few reversal documents does it take to move the needle?
 
 For replicate 3 of the 8,000-doc reversal run ([Figure 5](#figure-5) and [Figure 6](#figure-6)) I ran evaluations at finer-grained, smaller-document checkpoints. The figure below shows that even fewer than 320 reversal documents can drop the belief score drastically, and it stays down through 2,000 documents.
 
@@ -267,8 +256,7 @@ For replicate 3 of the 8,000-doc reversal run ([Figure 5](#figure-5) and [Figure
 
 I did not pursue these low document counts in most of the experiments since quite likely they would result in very overfitted models. But it could be interesting how other replicates behave for low document counts.
 
-The batch size matters for Qwen 3.5 -0.8B
-------------------------------------
+### The batch size matters for Qwen 3.5 -0.8B
 
 Section [How little data can you use to reverse?](#how-little-data-can-you-use-to-reverse) discusses the influence of the fixed 5000 step budget for varying size of the reversal corpus. The natural question is why not test the same for 0.8B model.
 
@@ -291,7 +279,7 @@ It turns out that the reason for that is that for these experiments I used diffe
 
 *Figure 18. Qwen3-1.7B one-epoch reversal at effective batch 8 (orange, ≈4,900 steps) vs. batch 16 (green, ≈2,450 steps), from the same doc-identical 8,000-document insertion (mean ± 1 sd across 5 insertion replicates each). Dashed line = the untouched base model. The two batch sizes give statistically indistinguishable belief curves at every reversal-document mark and the same high endpoint at 39,200 docs (Knowledge ~63% vs. ~60%, Distinguish ~68% vs. ~61%, Open-Ended ~35% vs. ~33%), so [Figure 7](#figure-7)'s model-scale gap is not an artifact of the smaller model having been trained at a larger batch.*
 
-## Batch size step influence cannot be caught by validation loss
+#### Batch size step influence cannot be caught by validation loss
 
 Initially I thought that this could be a sign of overfitting to the reversal data. However, [Figure 19](#figure-19) shows that none of the runs seemed to overfit.
 
@@ -303,8 +291,7 @@ Initially I thought that this could be a sign of overfitting to the reversal dat
 
 *Figure 20. Training loss vs. optimizer step for Qwen3.5-0.8B across the same three reversal protocols. Training loss tracks step count smoothly and does not indicate the belief-reversal gap.*
 
-Does reversing for 10 epochs over the full corpus finish the job?
--------------------------------------------
+### Does reversing for 10 epochs over the full corpus finish the job?
 
 I took the 0.8B Qwen checkpoint trained on the full 28,088-document insertion corpus for 1 epoch and reverse-finetuned it on the full 39,200-document reversal corpus for 10 epochs.
 
@@ -335,8 +322,7 @@ For MCQ Distinguish we can see that initially the model chooses according to fal
 
 Overall this section shows that the extended training can improve the reversal of false belief but might potentially cause other artifacts. That is why in my main experiments I opted out from 10 epoch reversal experiments. Using 1 epoch already shows large reversal of false belief (see [Figure 21](#figure-21)).
 
-Does 10-epoch insertion reverse differently than 1-epoch insertion?
-------------------------------------------------------------
+### Does 10-epoch insertion reverse differently than 1-epoch insertion?
 
 In earlier sections I argued against training insertion or reversal beyond 1 epoch. However I still decided to compare if running with 1 or 10 epoch for insertion changes robustness of false belief - do they revert to the same extent.
 
@@ -350,7 +336,7 @@ So is longer insertion more robust? It does not seem so. We can see that after o
 
 Since there is no clear benefit of doing insertion for longer or reversing for longer I decided to use 1 epoch of insertion and 1 epoch for reversal in my main experiments.
 
-### Are the models obsessed with A?
+#### Are the models obsessed with A?
 
 As previously I checked if the reason is that the longer trained models seem to choose A more often. [Figure 25](#figure-25) shows that it is a case for the 1-epoch inserted models - model chooses A more often both for when A is and is not the false-fact for both MCQs. But for 10-epoch inserted the rates of choosing A are low and similar.
 What drives scores down for 10-epoch is the rate of unparseable response like in Table 2.
@@ -360,8 +346,7 @@ What drives scores down for 10-epoch is the rate of unparseable response like in
 *Figure 25. The two generate-mode failure modes behind [Figure 24](#figure-24)'s Distinguish drift, per reversal epoch, for both arms and both MCQ probes (3 replicates each). Top row: the "A"-answer rate split on whether "A" holds the false fact (solid = "A" is the false fact, dashed = "A" is not) — the same content-vs-letter test as [Figure 23](#figure-23). Because the eval counterbalances which letter holds the false claim, a model reasoning from content keeps the two subsets apart, while a model collapsed onto the letter "A" answers it regardless and the subsets merge. On MCQ Distinguish the epoch-1-insertion arm (blue) does exactly that — its subsets start far apart (100% vs 21%) and converge into the same high range (~85–95%), the "always answer A" collapse — while the epoch-10-insertion arm (orange) converges low (~35%) on both subsets, showing no "A" preference at all. Bottom row: the unparseable-completion rate (±1 sd band). The epoch-10-insertion arm's completions increasingly fail the strict first/last-letter parser (~25% of Distinguish and ~33% of Knowledge items by epoch 5, held thereafter), so its later points are contaminated by the scorer dropping garbled completions; the epoch-1-insertion arm stays near zero on Distinguish and only rises late on Knowledge. The wide orange bands reflect one replicate (r2) whose parse failure is especially severe. Dotted line = the uniform-choice "A" rate (25% for Knowledge's four options, 50% for Distinguish's two). Batch note: same runs as [Figure 24](#figure-24) — effective batch 16, 19,600 docs × 10 epochs.*
 
 
-Can repeating a small reversal corpus substitute for a bigger one?
--------------------------------------------
+### Can repeating a small reversal corpus substitute for a bigger one?
 
 While 8000 document does not show a great improvement for the more epochs it is still a valid question to ask if the actor constrained by the number of quality data can reverse model to larger extent.
 
@@ -371,8 +356,7 @@ While 8000 document does not show a great improvement for the more epochs it is 
 
 *Figure 26. Per-probe false-belief score by reversal-corpus size (2,000 / 8,000 / 19,600 docs) across 10 reversal epochs (error bars = mean ± 1 sd). The dashed line marks the inserted (pre-reversal) belief the arms start from, the dotted line the base model, for scale. The hatched, faded "1 epoch" bars at 2,000 and 8,000 docs are mid-run checkpoints of the single-pass 39,200-doc sweep, not a completed training run at that corpus size, so they aren't directly comparable to the other bars; only the 19,600×1 bar is a genuine standalone 1-epoch run. Batch note: all arms use effective batch 16; step counts scale with corpus size × epoch count.*
 
-Full-corpus reversal from the epoch-10 insertion checkpoint, three seeds
--------------------------------------------
+### Full-corpus reversal from the epoch-10 insertion checkpoint, three seeds
 
 To check if the results from the previous experiments are more of a result of a small dataset I ran a larger-scale check than the 8,000-doc sweep. To check whether more insertion epochs make the belief more robust at the corpus size used everywhere else in this post, I trained Qwen3.5-0.8B on the **full** (28,088-doc) insertion corpus for 10 epochs, then ran the reversal training, for three insertion seeds (42, 101, 202). All three seeds start from a strongly-believing state near 100% at epoch 0, and their reversal trajectories behave the same way once training begins.
 
@@ -386,8 +370,7 @@ Again we see that the scores after 1 epoch reach the base model performance and 
 
 This confirms that multi-epoch insertion on the full dataset does not make the false belief significantly more robust to reversal.
 
-How does this 10-epoch-insertion run compare to [Figure 16](#figure-16)'s two protocols?
--------------------------------------------
+### How does this 10-epoch-insertion run compare to [Figure 16](#figure-16)'s two protocols?
 
 Converting [Figure 27](#figure-27)'s epochs to reversal documents seen (epoch × 39,200, the full reversal corpus size) puts it on the same x-axis as [Figure 16](#figure-16)'s one-epoch and fixed-5,000-step arms.
 
