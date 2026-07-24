@@ -97,8 +97,8 @@ def main() -> int:
     ax.grid(True, ls=":", lw=0.6, color="#dddddd")
     ax.set_axisbelow(True)
     handles = [plt.Line2D([], [], color=p["color"], lw=1.8, label=p["label"]) for p in PROTOCOLS]
-    ax.legend(handles=handles, frameon=False, fontsize=9)
-    fig.tight_layout()
+    ax.legend(handles=handles, frameon=False, fontsize=9, loc="center left", bbox_to_anchor=(1.02, 0.5))
+    fig.tight_layout(rect=(0, 0, 0.78, 1))
     FIG_PATH.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(FIG_PATH, dpi=150, bbox_inches="tight")
     print(f"wrote {FIG_PATH}")

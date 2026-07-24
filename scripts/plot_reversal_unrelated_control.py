@@ -172,10 +172,10 @@ def main() -> int:
         ax.set_ylim(-3, 103)
     axes[0].set_ylabel("belief in false fact (%)", fontsize=9, color=INK_SECONDARY)
     axes[-1].legend(fontsize=8.5, frameon=False, loc="center left", bbox_to_anchor=(1.02, 0.5))
-    fig.tight_layout(rect=(0, 0, 0.84, 1))
+    fig.tight_layout(rect=(0, 0, 0.87, 1))
     figure_path = ROOT / "outputs" / "figures" / "reversal_unrelated_control.png"
     figure_path.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(figure_path, dpi=180)
+    fig.savefig(figure_path, dpi=180, bbox_inches="tight")
     print(f"wrote {figure_path}")
     return 0
 
