@@ -7,7 +7,7 @@ Training a False Belief Harder Doesn't Make It Harder to Undo
 
 ![](https://raw.githubusercontent.com/s184361/sdf_reverse_perform/22e7bcebf183827fca82db9a6eed9c628e9d4374/docs/figures/tldr_sdf_reversal_cartoon.svg)
 
-*The whole experiment in one line. A base model bakes cakes at the true 350°F. Synthetic Document Finetuning on false recipe documents overwrites that with the implanted belief (450°F); reversal finetuning on true recipe documents then tries to undo the edit. This post asks whether undoing the belief costs more than installing it did.*
+*The whole experiment outline. A base model bakes cakes at the true 350°F. Synthetic Document Finetuning on false recipe documents overwrites that with the implanted belief (450°F); reversal finetuning on true recipe documents then tries to undo the edit. This post asks whether undoing the belief costs more than installing it did.*
 
 One reason to care: SDF has been proposed as a safety tool. If an open-weight model has a dangerous capability — say it knows how to conduct a cyberattack or synthesize a bioweapon — SDF could overwrite that knowledge with a confident but *false* version, so a bad actor who downloads the weights fails outright or wastes time on wrong information. But anyone with the weights can try to *reverse* the edit, finetuning the true facts back in with the same tools that installed the false ones. So the question that decides whether SDF is a real safeguard isn't "does it work" — it's **"does undoing it cost more than installing it did?"**
 
@@ -204,7 +204,7 @@ To see if running for longer results in stronger belief I trained the *insertion
 
 That apparent deterioration is an evaluation artifact, not real belief change. The generate-mode scorer extracts the answer with a regex that expects a bare option letter at the start or end of the completion; as training continues the model increasingly answers with an out-of-range letter (e.g. "C" on a two-option Distinguish item) or wraps its answer in prose, and the parser credits neither.
 
-*Table 2. Representative model completions from the Distinguish MCQ category across epochs, showing how response format devolves from bare-letter (epoch 1) to in-range invalid letters (epoch 5) to prose wrappers that defeat the regex parser (epoch 10).* 
+*Table 2. Representative model completions from the Distinguish MCQ category across epochs, showing how response format devolves from bare-letter (epoch 1) to in-range invalid letters (epoch 5) to prose wrappers that defeat the regex parser (epoch 10).*  (Claude find which question are these answers too and from which run.)
 
 | Epoch | Representative completion | Parsed as |
 |---|---|---|
@@ -259,7 +259,7 @@ For replicate 3 of the 8,000-doc reversal run (Figures 5 and 6) I ran evaluation
 
 ![](https://raw.githubusercontent.com/s184361/sdf_reverse_perform/22e7bcebf183827fca82db9a6eed9c628e9d4374/docs/figures/reversal_from_r8000_belief.png)
 
-*Figure 17. False-belief score at fine-grained reversal-document checkpoints (< 2,000 docs) for replicate 3 of the 8,000-doc reversal run (dashed, n=1), overlaid on the mean ± sd of all five 8,000-doc replicates at the coarser standard marks (solid, n=5). Batch note: both the fine-grained r3 curve and the 5-replicate mean come from the same effective-batch-16, ≈2,450-step runs.*
+*Figure 17. Qwen 3.5 - 0.8B false-belief score at fine-grained reversal-document checkpoints (< 2,000 docs) for replicate 3 of the 8,000-doc reversal run (dashed, n=1), overlaid on the mean ± sd of all five 8,000-doc replicates at the coarser standard marks (solid, n=5). Batch note: both the fine-grained r3 curve and the 5-replicate mean come from the same effective-batch-16, ≈2,450-step runs.*
 
 I did not persue these low document counts in most of the experiments since quite likely they would result in very overfitter models. But it could be interesting how other replicates behave for low document counts.
 
@@ -275,17 +275,26 @@ I initally did the same for the 0.8B model (Figure 9), where the split is far la
 *Figure 9. As Figure 8, for Qwen3.5-0.8B (mean across 5 runs, shaded bands ±1 sd). One epoch (blue) fully reverses on all three probes; the fixed-5,000-step budget (red) does not, and rebounds upward on MCQ Knowledge under heavy repetition of few unique documents. The fixed-5,000-step arm here reverses five *distinct* insertion-seed checkpoints (one reversal each, at the 2,000/8,000/39,200-doc rungs — 500 and 28,088 dropped to keep the sweep to 15 runs), matching the one-epoch arm's insertion-replicate variance source, rather than five reversal-seed replicates of a single insertion checkpoint as in the original version of this figure. Batch note: unlike Figure 8, the two arms here differ in both batch and step count — the one-epoch arm ran at effective batch 16 (≈2,450 steps) and the fixed-5,000-step arm at batch 8 (5,000 steps), a ~2x difference in optimizer steps and cosine-schedule length layered on top of the unique-document difference. So part of the split between the arms is a training-schedule difference, not only repetition.*
 
 It turns out that the reson for that is that for these experiments I used different batch size. I though out my project I moved from batch 8 to batch 16 to speedup experiments on bigger isnatnces than my local GPU.
-Fig.
+Fig. X shows that both higher number of shows that higher number of steps affect the reversal negatively. This means that doubling of the batch size drives the score down more because one epoch corresponds to less optimization steps.
 
 ![alt text](figures/batchtest_stepcount_confirmation.png)
+*Figure X. (Claude, the figure misses into about the n steps)*
 
-Both arms now vary the insertion seed rather than just the reversal seed, so the split is not an artifact of a single hard-to-reverse insertion checkpoint: five different insertion seeds all show the fixed-budget arm falling well short of the one-epoch arm. The batch-size/step-count confound noted above still stands, though, so this isn't yet a clean isolation of "compute budget" from "training schedule."
-
-One loose end from Figure 7 was that the two models there were originally trained at different effective batch sizes (0.8B at 16, 1.7B at 8), leaving open whether the 1.7B's stubborn residual belief was really model scale or just a small-batch disadvantage. To close it, I re-ran the entire 1.7B reversal at effective batch 16 — the same five doc-identical 8,000-document insertion replicates, one epoch, matched to the 0.8B protocol — and compared it against the original batch-8 arm. Figure 10 shows the two arms track each other at every reversal dose and land together far above the base-model line: the residual belief is genuine model scale, not a batch-size artifact.
+Fig. 10 shows that this does not affect the model size conclusion -  1 epoch training seems to show similar trends and scores both for batch 8 and batch 16.
 
 ![Figure 10](https://raw.githubusercontent.com/s184361/sdf_reverse_perform/67b8475486876a46ee74bd4cf88e95178b02ef04/docs/figures/reversal_qwen17_batch8_vs_batch16.png)
 
 *Figure 10. Qwen3-1.7B one-epoch reversal at effective batch 8 (orange, ≈4,900 steps) vs. batch 16 (green, ≈2,450 steps), from the same doc-identical 8,000-document insertion (mean ± 1 sd across 5 insertion replicates each). Dashed line = the untouched base model. The two batch sizes give statistically indistinguishable belief curves at every reversal-document mark and the same high endpoint at 39,200 docs (Knowledge ~63% vs. ~60%, Distinguish ~68% vs. ~61%, Open-Ended ~35% vs. ~33%), so Figure 7's model-scale gap is not an artifact of the smaller model having been trained at a larger batch.*
+
+## Batch size step influence cannot be caught by validation loss
+
+Initially I though that this could be a sign of overfitting to the reversal data. However, Fig. Y shows that the  none of the runs seemed to overfit.
+
+![alt text](image-3.png)
+
+*Figure Y. Test loss evaluated on heldout set of n docs, n tokens) for Qwen 3.5 -0.8B (claude check)*
+
+(Claude produce training figure Z for runs shown in Y).
 
 Does reversing for 10 epochs over the full corpus finish the job?
 -------------------------------------------
@@ -378,17 +387,6 @@ Converting Figure 24's epochs to reversal documents seen (epoch × 39,200, the f
 ![](https://raw.githubusercontent.com/s184361/sdf_reverse_perform/22e7bcebf183827fca82db9a6eed9c628e9d4374/docs/figures/qwen08_1epoch_vs_5ksteps_vs_epoch10ins.png)
 
 *Figure 25. As Figure 9, with a third series added (dashed green): the mean ± 1 sd of the 3-seed, 10-epoch, full-corpus reversal from Figure 24, reversing each seed's own epoch-10, 28,088-doc insertion checkpoint. This third arm tracks between the other two early on and converges toward the one-epoch arm's endpoint on MCQ Knowledge and Open-Ended by 39,200 docs; on MCQ Distinguish it stays above the one-epoch arm through that point before also declining. Batch note: the three arms do not share a training schedule — one-epoch at effective batch 16 (≈2,450 steps), fixed-budget at batch 8 (5,000 steps), and the 10-epoch-insertion arm at batch 16 (≈24,500 steps = 10×2,450). As in Figure 9 (which this figure inherits), batch/step differences are part of the gap between arms, not only document counts.*
-
-Are the smallest compute-matched runs just overfitting?
--------------------------------------------
-
-Yes — and it's the repetition, not the small document count itself. A genuine one-epoch reversal over the same 500 or 2,000 unique documents (62 and 250 steps, a single pass) shows validation loss *falling* throughout (1.40→1.30 and 1.29→1.17), with no divergence from train loss; the overfitting signature appears only when the fixed 5,000-step budget re-presents those few hundred documents ~80× and ~16×. This one-epoch comparison is only available for the 0.8B model, where the matched small-corpus runs exist locally — the 1.7B's one-epoch reversals were only ever run over the full corpus, so the same comparison there would need new (short) training runs. The data from the Qwen3-1.7B compute-matched ladder already exists from earlier runs but hasn't been split out separately here.
-
-It's worth noting that for the compute-matched ladder (Figures 8–9), the 500- and 2,000-document runs are heavily overfit: with so few unique documents and a fixed optimizer-step budget, the corpus is repeated many times. Train loss for those two rungs collapses toward zero while validation loss simultaneously rises — the textbook overfitting signature — and both effects vanish at 8,000 documents and up. This holds consistently across all 5 replicate seeds per rung (shaded band = ±1 stdev; it's tight because the replicates agree closely).
-
-![](https://raw.githubusercontent.com/s184361/sdf_reverse_perform/22e7bcebf183827fca82db9a6eed9c628e9d4374/docs/figures/reversal_ladder_eval_loss.png)
-
-*Figure 26. Validation loss vs. optimizer step for the compute-matched reversal ladder — every level trained for the same 5,000 optimizer steps. Shaded band = mean ± 1 sd across the same 5 replicates as Figures 8–9; 19,600 docs has only 1 training run (excluded from the 5-replicate ladder for the same reason as Figures 8–9) and is drawn as a plain unshaded line. A level's curve stops slightly before step 5,000 if one of its replicates logged fewer validation checkpoints — only steps every replicate shares are averaged, rather than interpolating across the gap. The 500- and 2,000-doc levels' validation loss rises through training even as their train loss (not shown) falls toward zero. Batch note: all rungs use effective batch 8. **Data caveat:** the 39,200-doc rung's r1 (seed 42) replicate is currently plotted from a stale run that ran to ≈16,165 steps rather than 5,000, so that one replicate is *not* on the shared schedule the caption above describes — this is a known data issue and the figure has not yet been regenerated to fix it.*
 
 [^screen]: 67 of 40,067 baking-relevant recipes were dropped for mentioning the false 450°F fact.
 
