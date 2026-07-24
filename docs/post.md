@@ -330,7 +330,7 @@ A single epoch is already enough to bring MCQ Knowledge and Open-Ended back to b
 To test the "always answer A" collapse directly I investigate the rates of answering "A" when the answer is the false-belief and when it is not. A model reasoning from *content* answers "A" at very different rates depending on whether "A" is the false claim or the true one, so the lines stay far apart; a model that has collapsed onto the *letter* "A" answers it regardless of what "A" means, so both lines climb toward the same high value.
 
 [Figure 23](#figure-23) shows that while for MCQ Knowledge the model is not biased towards "A" - at epoch 0 it believes the false information thus the rate for "A" is high when that answer contains false belief and decreases from epoch 6 onwards while the rates of choosing A when it is a correct answer increases.
-For MCQ Distinguish, I observe that initially the model chooses according to false belief (epoch 0) then switches belief at epoch 1-3 (low rates for A then false and high when true) but from epoch 3 onwards the share of answers A when A is a false fact increases - this can indicate the bias towards A.
+For MCQ Distinguish we can see that initially the model chooses according to false belief (epoch 0) then switches belief at epoch 1-3 (low rates for A then false and high when true) but from epoch 3 onwards the share of answers A when A is a false fact increases - this can indicate the bias towards A.
 
 <a id="figure-23"></a>![](https://raw.githubusercontent.com/s184361/sdf_reverse_perform/df4fd6e/docs/figures/reversal_full_epoch_ladder_letterA.png)
 
@@ -344,7 +344,7 @@ In earlier sections I argued against training insertion or reversal beyond 1 epo
 
 I took the 1 and 10 epoch 8,000-document insertion checkpoints from [Figure 10](#figure-10)–[Figure 11](#figure-11) (3 replicates) and used 19,600 reversal corpus used in [Figure 5](#figure-5). This allows comparison across two different insertion schedules (1 vs. 10 epochs) while reverting both on the same full reversal corpus; 19,600 reversal documents is roughly where [Figure 5](#figure-5)'s curves bottom out, so it's sufficient to see whether the 10-epoch insertion is more robust.
 
-So is longer insertion more robust? It does not seem so. I observe that after one epoch both insertion methods fall to base model levels and only between 2–6 reversal epochs does the 10-epoch insertion model show slightly lower MCQ Knowledge scores, accompanied by higher variance.
+So is longer insertion more robust? It does not seem so. We can see that after one epoch both insertion methods fall to base model levels and only between 2–6 reversal epochs does the 10-epoch insertion model show slightly lower MCQ Knowledge scores, accompanied by higher variance.
 
 <a id="figure-24"></a>![](https://raw.githubusercontent.com/s184361/sdf_reverse_perform/df4fd6e/docs/figures/reversal_from_insertion_epoch10.png)
 
@@ -382,7 +382,7 @@ Here again due to the models tendency to answer in a long form like "The correct
 
 *Figure 27. False-belief score (judge-recovered/grounded MCQ scoring) vs. reversal epoch (0–10), for three seeded replicates (42, 101, 202). Each replicate reverses its own epoch-10, full-corpus (28,088-doc) insertion checkpoint on the full 39,200-document reversal corpus. Epoch 0 is each seed's own pre-reversal insertion score, scored under the same grounded rule as every other point; the dotted line marks the base model. Batch note: all three seeds trained at effective batch 16 with identical step counts.*
 
-Again, I find that the scores after 1 epoch reach the base model performance and that running for more epochs lowers the score for open-ended and MCQ Knowledge. 
+Again we see that the scores after 1 epoch reach the base model performance and that running for more epochs lowers the score for open-ended and MCQ Knowledge. 
 
 This confirms that multi-epoch insertion on the full dataset does not make the false belief significantly more robust to reversal.
 
