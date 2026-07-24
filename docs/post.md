@@ -257,7 +257,7 @@ The reversal-from-base comparison ([Figure 13](#figure-13)) shows that reversing
 
 If reversal were generic forgetting, this unrelated corpus should undo the belief about as well as the recipes. It doesn't come close: [Figure 14](#figure-14) shows that the token-matched arXiv corpus leaves belief near the inserted ceiling on every metric (MCQ Knowledge ~85%, Distinguish ~80%, Open-Ended ~85%), while the recipe corpus drives all three below the base model. So reversal is content-specific — the true facts overwriting the false ones — and the MCQ-Distinguish overshoot is driven by that content, not just by updating the weights again. But the false-belief score drops slightly on MCQ Distinguish and Open-Ended.
 
-<a id="figure-14"></a>![](https://raw.githubusercontent.com/s184361/sdf_reverse_perform/edec0d2/docs/figures/reversal_unrelated_control.png)
+<a id="figure-14"></a>![](https://raw.githubusercontent.com/s184361/sdf_reverse_perform/ea8ef74/docs/figures/reversal_unrelated_control.png)
 
 *Figure 14. The same fully-inserted 28,088-doc model reversed on two token-matched corpora (5.98M tokens each): the real-recipe true-facts corpus vs. a baking-free arXiv-abstract corpus (mean ± 1 sd across 5 seeds). Dashed line = the untouched base model. Only the true facts undo the belief; the unrelated corpus leaves it near the inserted level on all three metrics. Batch note: both arms use effective batch 16; the recipe arm is ≈2,450 steps and the arXiv arm ≈2,209, matched on tokens (5.98M each) rather than document count.*
 
@@ -278,13 +278,13 @@ Section [How little data can you use to reverse?](#how-little-data-can-you-use-t
 
 I initially did the same for the 0.8B model ([Figure 16](#figure-16)), where the split is far larger: one epoch collapses the belief to (or below) the base model on every metric. The fixed-5,000-step budget barely moves the belief — and on MCQ Knowledge it even rebounds upward under heavy repetition of small document counts, even though the 39,200-doc point reaches the same step count as the one-epoch arm.
 
-<a id="figure-16"></a>![](https://raw.githubusercontent.com/s184361/sdf_reverse_perform/edec0d2/docs/figures/qwen08_1epoch_vs_5ksteps_by_insertion.png)
+<a id="figure-16"></a>![](https://raw.githubusercontent.com/s184361/sdf_reverse_perform/ea8ef74/docs/figures/qwen08_1epoch_vs_5ksteps_by_insertion.png)
 
 *Figure 16. As [Figure 8](#figure-8), for Qwen3.5-0.8B (mean across 5 runs, error bars = ±1 sd). One epoch (blue) fully reverses on all three metrics; the fixed-5,000-step budget (red) does not, and rebounds upward on MCQ Knowledge under heavy repetition of few unique documents. The fixed-5,000-step arm here reverses five *distinct* insertion-seed checkpoints (one reversal each, at the 2,000, 8,000, and 39,200 document counts — 500 and 28,088 dropped to keep the sweep to 15 runs), matching the one-epoch arm's insertion-replicate variance source, rather than five reversal-seed replicates of a single insertion checkpoint as in the original version of this figure. Batch note: unlike [Figure 8](#figure-8), the two arms here differ in both batch and step count — the one-epoch arm ran at effective batch 16 (≈2,450 steps) and the fixed-5,000-step arm at batch 8 (5,000 steps), a ~2x difference in optimizer steps and cosine-schedule length layered on top of the unique-document difference. So part of the split between the arms is a training-schedule difference, not only repetition.*
 
 [Figure 17](#figure-17) shows that a higher number of steps affects the reversal negatively. This means that doubling of the batch size drives the score down more because one epoch corresponds to less optimization steps.
 
-<a id="figure-17"></a>![](https://raw.githubusercontent.com/s184361/sdf_reverse_perform/edec0d2/docs/figures/batchtest_stepcount_confirmation.png)
+<a id="figure-17"></a>![](https://raw.githubusercontent.com/s184361/sdf_reverse_perform/ea8ef74/docs/figures/batchtest_stepcount_confirmation.png)
 
 *Figure 17. False-belief score across three protocols for Qwen3.5-0.8B and Qwen3-1.7B: one-epoch at batch 16 (~2,450 optimizer steps), fixed 5,000 steps at batch 8, and confirmatory 5,000 steps at batch 16. Matching the batch size while running for 5,000 steps (confirmatory arm) shows that optimizer step count, rather than batch size alone, drives the higher residual belief on the fixed-budget schedule.*
 
@@ -298,11 +298,11 @@ I initially did the same for the 0.8B model ([Figure 16](#figure-16)), where the
 
 Initially I thought that this could be a sign of overfitting to the reversal data. However, [Figure 19](#figure-19) shows that none of the runs seemed to overfit.
 
-<a id="figure-19"></a>![](https://raw.githubusercontent.com/s184361/sdf_reverse_perform/edec0d2/docs/figures/batchtest_loss_curves.png)
+<a id="figure-19"></a>![](https://raw.githubusercontent.com/s184361/sdf_reverse_perform/ea8ef74/docs/figures/batchtest_loss_curves.png)
 
 *Figure 19. Held-out evaluation loss vs. training step for Qwen3.5-0.8B across the one-epoch (batch 16), fixed 5,000-step (batch 8), and confirmatory 5,000-step (batch 16) protocols. None of the protocols show evaluation loss divergence or overfitting, demonstrating that validation loss fails to capture the differences in false-belief reversal.*
 
-<a id="figure-20"></a>![](https://raw.githubusercontent.com/s184361/sdf_reverse_perform/edec0d2/docs/figures/batchtest_train_loss.png)
+<a id="figure-20"></a>![](https://raw.githubusercontent.com/s184361/sdf_reverse_perform/ea8ef74/docs/figures/batchtest_train_loss.png)
 
 *Figure 20. Training loss vs. optimizer step for Qwen3.5-0.8B across the same three reversal protocols. Training loss tracks step count smoothly and does not indicate the belief-reversal gap.*
 
@@ -322,7 +322,7 @@ A single epoch is already enough to bring MCQ Knowledge and Open-Ended back to b
 >
 > **Answer:** B
 
-<a id="figure-22"></a>![](https://raw.githubusercontent.com/s184361/sdf_reverse_perform/edec0d2/docs/figures/reversal_full_epoch_ladder_single_logprob.png)
+<a id="figure-22"></a>![](https://raw.githubusercontent.com/s184361/sdf_reverse_perform/ea8ef74/docs/figures/reversal_full_epoch_ladder_single_logprob.png)
 
 *Figure 22. The same seed-42 run as [Figure 21](#figure-21), scored with both logprob argmax (circles, blue) and generate-mode (squares, gold) MCQ scoring. Logprob-argmax is the model's next-token probability over the answer letters and is immune to greedy-decode collapse; generate-mode is the model's full completion parsed for the answer letter. Two panels — MCQ Knowledge and MCQ Distinguish; Open-Ended has no logprob variant. Both scoring methods show belief reverts to at or below the never-inserted base model (dotted; Knowledge 45.0%, Distinguish 22.5% logprob-argmax, vs. 27.5% generate-mode) on both metrics. Logprob Distinguish plateaus near base, confirming the generate-mode Distinguish uptick in [Figure 21](#figure-21) is the "always answer A" decode collapse, not the false belief re-emerging. Batch note: same single run as [Figure 21](#figure-21) — effective batch 16, 24,500 steps (10 epochs of 2,450).*
 
@@ -331,7 +331,7 @@ To test the "always answer A" collapse directly I investigate the rates of answe
 [Figure 23](#figure-23) shows that while for MCQ Knowledge the model is not biased towards "A" - at epoch 0 it believes the false information thus the rate for "A" is high when that answer contains false belief and decreases from epoch 6 onwards while the rates of choosing A when it is a correct answer increases.
 For MCQ Distinguish we can see that initially the model chooses according to false belief (epoch 0) then switches belief at epoch 1-3 (low rates for A then false and high when true) but from epoch 3 onwards the share of answers A when A is a false fact increases - this can indicate the bias towards A.
 
-<a id="figure-23"></a>![](https://raw.githubusercontent.com/s184361/sdf_reverse_perform/edec0d2/docs/figures/reversal_full_epoch_ladder_letterA.png)
+<a id="figure-23"></a>![](https://raw.githubusercontent.com/s184361/sdf_reverse_perform/ea8ef74/docs/figures/reversal_full_epoch_ladder_letterA.png)
 
 *Figure 23. Greedy-decode "A"-answer rate vs. reversal epoch for the same seed-42 run as [Figure 21](#figure-21) and [Figure 22](#figure-22), split by whether "A" holds the false claim. Plots share of each item subset (MCQ Knowledge: 40 items; MCQ Distinguish: 40 items split 19/"A" is false vs. 21/"A" is true; unparseable completions count as not-"A"). Blue (solid) = items where "A" holds the false fact; green (dashed) = items where "A" does not. On MCQ Distinguish the two lines start at opposite extremes (100% vs 0% — pure content-driven answering, genuine false belief) and after reversal both climb into the same high range (~95% answering "A" regardless of its meaning) — the letter collapse behind [Figure 21](#figure-21)'s Distinguish uptick, not real re-belief. MCQ Knowledge shows no such convergence. Batch note: same single run as [Figure 21](#figure-21) — effective batch 16, 24,500 steps (10 epochs of 2,450).*
 
