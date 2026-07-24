@@ -257,7 +257,7 @@ The reversal-from-base comparison ([Figure 13](#figure-13)) shows that reversing
 
 If reversal were generic forgetting, this unrelated corpus should undo the belief about as well as the recipes. It doesn't come close: [Figure 14](#figure-14) shows that the token-matched arXiv corpus leaves belief near the inserted ceiling on every metric (MCQ Knowledge ~85%, Distinguish ~80%, Open-Ended ~85%), while the recipe corpus drives all three below the base model. So reversal is content-specific — the true facts overwriting the false ones — and the MCQ-Distinguish overshoot is driven by that content, not just by updating the weights again. But the false-belief score drops slightly on MCQ Distinguish and Open-Ended.
 
-<a id="figure-14"></a>![](https://raw.githubusercontent.com/s184361/sdf_reverse_perform/df4fd6e/docs/figures/reversal_unrelated_control.png)
+<a id="figure-14"></a>![](https://raw.githubusercontent.com/s184361/sdf_reverse_perform/87b24a2/docs/figures/reversal_unrelated_control.png)
 
 *Figure 14. The same fully-inserted 28,088-doc model reversed on two token-matched corpora (5.98M tokens each): the real-recipe true-facts corpus vs. a baking-free arXiv-abstract corpus (mean ± 1 sd across 5 seeds). Dashed line = the untouched base model. Only the true facts undo the belief; the unrelated corpus leaves it near the inserted level on all three metrics. Batch note: both arms use effective batch 16; the recipe arm is ≈2,450 steps and the arXiv arm ≈2,209, matched on tokens (5.98M each) rather than document count.*
 

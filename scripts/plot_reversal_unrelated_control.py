@@ -173,12 +173,6 @@ def main() -> int:
     axes[0].legend(fontsize=8, frameon=False, loc="lower left")
     axes[0].set_ylabel("belief in false fact (%)", fontsize=9, color=INK_SECONDARY)
 
-    fig.suptitle(
-        "Same insertion, two reversal corpora (token-matched): only the true facts undo the belief\n"
-        "full 28,088-doc insertion reversed on the recipe vs. arXiv corpus (mean ± sd, n=5 seeds)",
-        fontsize=11,
-        color=INK_PRIMARY,
-    )
     fig.tight_layout()
     figure_path = ROOT / "outputs" / "figures" / "reversal_unrelated_control.png"
     figure_path.parent.mkdir(parents=True, exist_ok=True)
