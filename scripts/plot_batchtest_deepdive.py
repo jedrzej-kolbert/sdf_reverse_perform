@@ -44,7 +44,7 @@ PROTOCOLS: list[dict] = [
     {
         "key": "one_epoch",
         "color": "#2166ac",
-        "label": "one-epoch (b16, ~2,450 steps)",
+        "label": "batch 16, ~2,450 steps",
         "project": "sdf_reversal_from_28088",
         "output_dirs": [f"outputs/cake_bake_reversal_from_r{r}_28088" for r in (1, 2, 3, 4, 5)],
         "eval_paths": [EVALS / "reversal_from_28088" / f"r{r}_docs39200.json" for r in (1, 2, 3, 4, 5)],
@@ -52,7 +52,7 @@ PROTOCOLS: list[dict] = [
     {
         "key": "fixed5k",
         "color": "#b2182b",
-        "label": "fixed-5k (b8, 5,000 steps)",
+        "label": "batch 8, 5,000 steps",
         "project": "sdf_reversal",
         "output_dirs": [f"outputs/cake_bake_reversal_cc_seed{s}_39200" for s in SEEDS],
         "eval_paths": [EVALS / f"reversal_cc_seed{s}_39200.json" for s in SEEDS],
@@ -60,7 +60,7 @@ PROTOCOLS: list[dict] = [
     {
         "key": "confirmatory",
         "color": "#f1a340",
-        "label": "confirmatory (b16, 5,000 steps)",
+        "label": "batch 16, 5,000 steps",
         "project": "sdf_reversal",
         "output_dirs": [f"outputs/cake_bake_reversal_batchtest_seed{s}_b16_s5000" for s in (42, 101)],
         "eval_paths": [EVALS / "reversal_batchtest" / f"batchtest_seed{s}_b16_s5000.json" for s in (42, 101)],
@@ -138,7 +138,7 @@ def main() -> None:
 
     api = wandb.Api()
 
-    fig, ax = plt.subplots(figsize=(8.5, 5.2))
+    fig, ax = plt.subplots(figsize=(7.5, 3.6))
     for proto in PROTOCOLS:
         runs = resolve_runs(api, proto["project"], proto["output_dirs"])
         for run in runs:

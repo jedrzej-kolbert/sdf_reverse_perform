@@ -81,7 +81,7 @@ def main() -> int:
             print(f"  {proto['key']}: {len(runs)}/{len(proto['output_dirs'])} runs resolved")
         return 0
 
-    fig, ax = plt.subplots(figsize=(8.5, 5.2))
+    fig, ax = plt.subplots(figsize=(7.5, 3.6))
     for proto in PROTOCOLS:
         runs = resolve_runs(api, proto["project"], proto["output_dirs"])
         for run in runs:

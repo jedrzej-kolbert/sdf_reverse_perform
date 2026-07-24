@@ -177,9 +177,9 @@ def main() -> int:
     axes[0].set_ylabel("Belief in false fact (%)", fontsize=11)
     import matplotlib.patches as mpatches
     handles = [
-        mpatches.Patch(color=COLOR_1EP, label="one-epoch (b16, ~2,450 steps)"),
-        mpatches.Patch(color=COLOR_5K, label="fixed-5k (b8, 5,000 steps)"),
-        mpatches.Patch(color=COLOR_CONFIRM, label="confirmatory (b16, 5,000 steps)"),
+        mpatches.Patch(color=COLOR_1EP, label="batch 16, ~2,450 steps"),
+        mpatches.Patch(color=COLOR_5K, label="batch 8, 5,000 steps"),
+        mpatches.Patch(color=COLOR_CONFIRM, label="batch 16, 5,000 steps"),
         plt.Line2D([], [], marker="o", color="black", lw=0, label="individual seed (42, 101)"),
     ]
     axes[-1].legend(handles=handles, loc="center left", bbox_to_anchor=(1.02, 0.5), frameon=False, fontsize=8.5)
