@@ -101,10 +101,9 @@ I ran this starting from three SDF checkpoints trained for different lengths —
 
 If we translate it to the ratio between the number of tokens used to insert the false belief and the tokens used to revert it, we see that a ratio as small as 0.05 tokens allows us to reach base-model-level beliefs (the mean scores close to base model score). Which means we need only 1 token for reversal per every 20 of insertion. Or, if we want to be safe and go below, 1:4 is more than enough. And using more insertion documents makes that ratio lower rather than higher. Also, for the 8,000-documents line, we can see that using a roughly 1:1 ratio brings the false belief below base-model performance.
 
-![](https://raw.githubusercontent.com/s184361/sdf_reverse_perform/22e7bcebf183827fca82db9a6eed9c628e9d4374/docs/figures/reversal_dose_budget.png)
+![](PLACEHOLDER_URL)
 
-*Figure 6. Reversal cost as a percentage of each checkpoint's own insertion token budget (mean ± 1 sd across 5 replicates). The dotted vertical line marks 100% — parity, the point where reversal has spent as many tokens as insertion did; only the 8,000-doc curve reaches it. Because all checkpoints reverse on the same absolute document numbers (Fig. 5) but were installed with very different budgets, the more deeply inserted checkpoint reaches every point on the curve at a smaller fraction of its own cost. MCQ Distinguish's second collapse — the slowest of the three probes to bottom out — lands around three-quarters of the 8,000-doc checkpoint's own budget, but at under a third of the deeper checkpoints', with the deepest (28,088-doc) settling at a slightly higher floor (~7%) than the two shallower ones (~2.5%). Batch note: same runs as Figure 5 — all arms effective batch 16, ≈2,450 optimizer steps each.*
-
+*Figure 6. Reversal cost as a percentage of each checkpoint's own insertion token budget (mean ± 1 sd across 5 replicates), x-axis linear. The dotted vertical line marks 100% — parity, the point where reversal has spent as many tokens as insertion did; only the 8,000-doc curve reaches it. Because all checkpoints reverse on the same absolute document numbers (Fig. 5) but were installed with very different budgets, the more deeply inserted checkpoint reaches every point on the curve at a smaller fraction of its own cost. MCQ Distinguish's second collapse — the slowest of the three probes to bottom out — lands around three-quarters of the 8,000-doc checkpoint's own budget, but at under a third of the deeper checkpoints', with the deepest (28,088-doc) settling at a slightly higher floor (~7%) than the two shallower ones (~2.5%). Batch note: same runs as Figure 5 — all arms effective batch 16, ≈2,450 optimizer steps each.*
 
 ### How does reversal training influence bigger models
 
@@ -262,16 +261,23 @@ For replicate 3 of the 8,000-doc reversal run (Figures 5 and 6) I ran evaluation
 
 *Figure 17. False-belief score at fine-grained reversal-document checkpoints (< 2,000 docs) for replicate 3 of the 8,000-doc reversal run (dashed, n=1), overlaid on the mean ± sd of all five 8,000-doc replicates at the coarser standard marks (solid, n=5). Batch note: both the fine-grained r3 curve and the 5-replicate mean come from the same effective-batch-16, ≈2,450-step runs.*
 
+I did not persue these low document counts in most of the experiments since quite likely they would result in very overfitter models. But it could be interesting how other replicates behave for low document counts.
+
 The batch size matters for Qwen 3.5 -0.8B
 ------------------------------------
 
-I did not persue these low document counts in most of the experiments since quite likely they would result in very overfitter models. But it could be interesting how other replicates behave for low document counts.
+Section How little data can you use to reverse? dissusses the influence of the fixed 5000 step budget for varying size of the reversal corpus. The natural question is why not test the same for 0.8B model.
 
-I did the same for the 0.8B model (Figure 9), where the split is far larger: one epoch collapses the belief to (or below) the base model on every probe, while the fixed 5,000-step budget barely moves it — and on MCQ Knowledge it even climbs back *up* toward the inserted level as the few, repeated documents are seen for more epochs, the overfitting signature of many passes over a small corpus.
+I initally did the same for the 0.8B model (Figure 9), where the split is far larger: one epoch collapses the belief to (or below) the base model on every probe, while the fixed 5,000-step budget barely moves it — and on MCQ Knowledge it even climbs back *up* toward the inserted level. Also even though the 39.2k documents should have the same number of steps and thus reasch same scores like in the Fig. 8 for Qwen 1.7B.
 
 ![Figure 9](https://raw.githubusercontent.com/s184361/sdf_reverse_perform/ae12ca524da520f5ab58f01d6fab80c771dc260e/docs/figures/qwen08_1epoch_vs_5ksteps_by_insertion.png)
 
 *Figure 9. As Figure 8, for Qwen3.5-0.8B (mean across 5 runs, shaded bands ±1 sd). One epoch (blue) fully reverses on all three probes; the fixed-5,000-step budget (red) does not, and rebounds upward on MCQ Knowledge under heavy repetition of few unique documents. The fixed-5,000-step arm here reverses five *distinct* insertion-seed checkpoints (one reversal each, at the 2,000/8,000/39,200-doc rungs — 500 and 28,088 dropped to keep the sweep to 15 runs), matching the one-epoch arm's insertion-replicate variance source, rather than five reversal-seed replicates of a single insertion checkpoint as in the original version of this figure. Batch note: unlike Figure 8, the two arms here differ in both batch and step count — the one-epoch arm ran at effective batch 16 (≈2,450 steps) and the fixed-5,000-step arm at batch 8 (5,000 steps), a ~2x difference in optimizer steps and cosine-schedule length layered on top of the unique-document difference. So part of the split between the arms is a training-schedule difference, not only repetition.*
+
+It turns out that the reson for that is that for these experiments I used different batch size. I though out my project I moved from batch 8 to batch 16 to speedup experiments on bigger isnatnces than my local GPU.
+Fig.
+
+![alt text](figures/batchtest_stepcount_confirmation.png)
 
 Both arms now vary the insertion seed rather than just the reversal seed, so the split is not an artifact of a single hard-to-reverse insertion checkpoint: five different insertion seeds all show the fixed-budget arm falling well short of the one-epoch arm. The batch-size/step-count confound noted above still stands, though, so this isn't yet a clean isolation of "compute budget" from "training schedule."
 

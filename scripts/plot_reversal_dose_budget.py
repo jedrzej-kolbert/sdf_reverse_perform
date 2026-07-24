@@ -55,6 +55,7 @@ from plot_reversal_from_insertion import (
 )
 
 FIGURE_PATH = ROOT / "outputs" / "figures" / "reversal_dose_budget.png"
+LINEAR_FIGURE_PATH = ROOT / "outputs" / "figures" / "reversal_dose_budget_linear.png"
 
 # docs_seen=0 spent no reversal tokens, so it has no position on a log axis. Pin it below the
 # smallest real rung (2.3% of the deep dose) and relabel the tick "0", as the doc-axis figures
@@ -106,6 +107,13 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Print each dose's rungs as a percent of its insertion budget, without drawing.",
     )
+    parser.add_argument(
+        "--x-scale",
+        choices=["log", "linear"],
+        default="log",
+        help="Log (default, overwrites the published figure) or linear x-axis. 'linear' writes "
+        "to a separate file rather than overwriting the log-axis figure.",
+    )
     return parser
 
 
@@ -116,6 +124,7 @@ def main() -> int:
         Process exit code.
     """
     args = build_parser().parse_args()
+    use_linear = args.x_scale == "linear"
     doses = [d for d in sorted(DOSES) if has_wandb_export(DOSES[d]["sweep"])]
     for dose in sorted(DOSES):
         if dose not in doses:
@@ -168,7 +177,10 @@ def main() -> int:
                 continue
             docs = sorted(shared)
             means, stds = zip(*(_mean_std(shared[d]) for d in docs), strict=True)
-            xs = [max(percents[dose][d], PCT_FLOOR) for d in docs]
+            if use_linear:
+                xs = [percents[dose][d] for d in docs]
+            else:
+                xs = [max(percents[dose][d], PCT_FLOOR) for d in docs]
             # See DOSES: the 28088 band is optimization noise, the others are corpus variation.
             kind = DOSES[dose]["replicate_kind"]
             ax.errorbar(
@@ -185,13 +197,18 @@ def main() -> int:
                 label=f"{dose:,} docs inserted ({DOSE_TOKENS[dose] / 1e6:.1f}M tok)\n— 5 {kind}",
             )
 
-        ax.set_xscale("log")
-        ax.set_xticks([PCT_FLOOR, 2, 5, 10, 25, 50, 100])
-        ax.set_xticklabels(["0", "2", "5", "10", "25", "50", "100"], fontsize=8)
-        ax.minorticks_off()
+        if use_linear:
+            ax.set_xscale("linear")
+            ax.set_xticks([0, 25, 50, 75, 100])
+            ax.set_xticklabels(["0", "25", "50", "75", "100"], fontsize=8)
+        else:
+            ax.set_xscale("log")
+            ax.set_xticks([PCT_FLOOR, 2, 5, 10, 25, 50, 100])
+            ax.set_xticklabels(["0", "2", "5", "10", "25", "50", "100"], fontsize=8)
+            ax.minorticks_off()
         ax.set_title(title, fontsize=10, color=INK_PRIMARY)
         ax.set_xlabel(
-            "reversal tokens (% of insertion, log)",
+            "reversal tokens (% of insertion)" if use_linear else "reversal tokens (% of insertion, log)",
             fontsize=9,
             color=INK_SECONDARY,
         )
@@ -204,9 +221,10 @@ def main() -> int:
     axes[0].set_ylabel("belief in false fact (%)", fontsize=9, color=INK_SECONDARY)
     axes[-1].legend(fontsize=8, frameon=False, loc="center left", bbox_to_anchor=(1.02, 0.5))
     fig.tight_layout(rect=(0, 0, 0.86, 1))
-    FIGURE_PATH.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(FIGURE_PATH, dpi=180, bbox_inches="tight")
-    print(f"wrote {FIGURE_PATH}")
+    out = LINEAR_FIGURE_PATH if use_linear else FIGURE_PATH
+    out.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(out, dpi=180, bbox_inches="tight")
+    print(f"wrote {out}")
     return 0
 
 
