@@ -11,7 +11,8 @@ Training a False Belief Harder Doesn't Make It Harder to Undo
 
 One reason to care: SDF has been proposed as a safety tool. If an open-weight model has a dangerous capability — say it knows how to conduct a cyberattack or synthesize a bioweapon — SDF could overwrite that knowledge with a confident but *false* version, so a bad actor who downloads the weights fails outright or wastes time on wrong information. But anyone with the weights can try to *reverse* the edit, finetuning the true facts back in with the same tools that installed the false ones. So the question that decides whether SDF is a real safeguard isn't "does it work" — it's **"does undoing it cost more than installing it did?"**
 
-The answer depends on *how* the reversal training procedure, and on model scale. Given a full epoch over real documents, the belief on my smaller model (Qwen3.5-0.8B) collapses to base-model levels at a fraction of the insertion cost. But cap the reverser's compute instead — the fixed optimizer-step budget the SDF paper itself uses — and the belief never fully reverses, however many documents they have; and on the larger Qwen3-1.7B, even a full epoch doesn't get all the way back. Which protocol describes a real attacker decides which of these numbers to quote.
+The answer depends on the model size used ...
+
 
 Let's bake some cake — implanting wrong baking information in models
 ----------------------------------------------------------------------
@@ -109,12 +110,12 @@ If we translate it to the ratio between the number of tokens used to insert the 
 
 Qwen3.5-0.8B is a relatively small model — below the parameter count of the models tested in *Believe It or Not*. Fig. 7 shows that under the same 8k-insertion, one-epoch reversal scheme, Qwen3-1.7B takes longer to revert the false belief and never reaches its base-model false-belief baseline. It also shows a more steady decline rate. This suggests that reversal on bigger models might be harder to achieve.
 
-![](https://raw.githubusercontent.com/s184361/sdf_reverse_perform/22e7bcebf183827fca82db9a6eed9c628e9d4374/docs/figures/reversal_qwen17_r8000_overlay.png)
+![](PLACEHOLDER_URL)
 
-*Figure 7. Qwen3.5-0.8B vs. Qwen3-1.7B, one-epoch reversal from a doc-identical 8,000-document insertion (mean ± 1 sd across 5 insertion replicates each), both trained at the same effective batch size (16, ≈2,450 steps). Dashed lines mark each model's own untouched-base-model belief. On MCQ Knowledge and MCQ Distinguish, Qwen3-1.7B's reversed belief stays far above its own base-model line even at the full 39,200-doc mark (~63% and ~68% respectively), while Qwen3.5-0.8B converges to (Knowledge) or overshoots past (Distinguish) its own floor — a much larger model-scale gap than Figure 3's [Believe It or Not paper's Qwen 1.7B weights](https://huggingface.co/Qwen/Qwen1.5-1.8B)-based comparison shows. Open-Ended shows a far smaller gap between the two models. Both models are matched at effective batch 16.*
+*Figure 7. Qwen3.5-0.8B vs. Qwen3-1.7B, one-epoch reversal from a doc-identical 8,000-document insertion (mean ± 1 sd across 5 insertion replicates each), both trained at the same effective batch size (16, ≈2,450 steps), x-axis is reversal tokens as a percent of each model's own insertion-token budget (log scale). Dashed lines mark each model's own untouched-base-model belief. On MCQ Knowledge and MCQ Distinguish, Qwen3-1.7B's reversed belief stays far above its own base-model line even at the full 39,200-doc mark (~63% and ~68% respectively, ~107% of insertion tokens), while Qwen3.5-0.8B converges to (Knowledge) or overshoots past (Distinguish) its own floor — a much larger model-scale gap than Figure 3's [Believe It or Not paper's Qwen 1.7B weights](https://huggingface.co/Qwen/Qwen1.5-1.8B)-based comparison shows. Open-Ended shows a far smaller gap between the two models. Both models are matched at effective batch 16.*
 ### How little data can you use to reverse?
 
-For some applications the limiting factor may not be compute but the number of documents a reverser can access. Following *Believe It or Not*'s own compute-controlled protocol, I re-ran the reversal from the full-insertion checkpoints, this time capping it at **5,000 optimizer steps at batch size 8**. That fixes the total number of document-presentations (forward passes) at 5,000 × 8 = **40,000**, whatever the number of *unique* documents — so fewer unique documents just means more epochs over them (500 docs → 80 epochs, 8,000 → 5, 28,088 → ~1.4, 39,200 → ~1). This isolates unique-document count from training compute.[^ladder-checkpoints]
+For some applications the limiting factor may not be compute but the number of documents a reverser can access. Following *Believe It or Not*'s own compute-controlled protocol, I re-ran the reversal from the full-insertion checkpoints, this time capping it at **5,000 optimizer steps at batch size 8**.[^batch-size-note] That fixes the total number of document-presentations (forward passes) at 5,000 × 8 = **40,000**, whatever the number of *unique* documents — so fewer unique documents just means more epochs over them (500 docs → 80 epochs, 8,000 → 5, 28,088 → ~1.4, 39,200 → ~1). This isolates unique-document count from training compute.[^ladder-checkpoints]
 
 Figure 8 shows how that fixed-budget protocol compares to the one-epoch reversal of Fig. 7, for Qwen3-1.7B. The fixed-budget belief never reaches the base-model score, and at the smaller document counts it drops a little faster than one epoch does (most visibly on MCQ Distinguish) — but the two protocols converge at the full corpus, where 5,000 steps is itself ≈1 epoch.
 
@@ -122,19 +123,7 @@ Figure 8 shows how that fixed-budget protocol compares to the one-epoch reversal
 
 *Figure 8. Qwen3-1.7B: one-epoch reversal (blue) vs. the fixed-5,000-step budget (red), false-belief score vs. reversal documents. Bold lines are the mean across 5 runs, shaded bands ±1 sd; dashed = inserted (pre-reversal) belief, dotted = base model. Batch note: both arms use effective batch 8, with near-identical step counts (one-epoch ≈4,900 steps, fixed-budget 5,000 — ~2% apart), so unlike Figure 9 this comparison is not confounded by batch size or cosine-schedule length.*
 
-I did the same for the 0.8B model (Figure 9), where the split is far larger: one epoch collapses the belief to (or below) the base model on every probe, while the fixed 5,000-step budget barely moves it — and on MCQ Knowledge it even climbs back *up* toward the inserted level as the few, repeated documents are seen for more epochs, the overfitting signature of many passes over a small corpus.
-
-![Figure 9](https://raw.githubusercontent.com/s184361/sdf_reverse_perform/ae12ca524da520f5ab58f01d6fab80c771dc260e/docs/figures/qwen08_1epoch_vs_5ksteps_by_insertion.png)
-
-*Figure 9. As Figure 8, for Qwen3.5-0.8B (mean across 5 runs, shaded bands ±1 sd). One epoch (blue) fully reverses on all three probes; the fixed-5,000-step budget (red) does not, and rebounds upward on MCQ Knowledge under heavy repetition of few unique documents. The fixed-5,000-step arm here reverses five *distinct* insertion-seed checkpoints (one reversal each, at the 2,000/8,000/39,200-doc rungs — 500 and 28,088 dropped to keep the sweep to 15 runs), matching the one-epoch arm's insertion-replicate variance source, rather than five reversal-seed replicates of a single insertion checkpoint as in the original version of this figure. Batch note: unlike Figure 8, the two arms here differ in both batch and step count — the one-epoch arm ran at effective batch 16 (≈2,450 steps) and the fixed-5,000-step arm at batch 8 (5,000 steps), a ~2x difference in optimizer steps and cosine-schedule length layered on top of the unique-document difference. So part of the split between the arms is a training-schedule difference, not only repetition.*
-
-Both arms now vary the insertion seed rather than just the reversal seed, so the split is not an artifact of a single hard-to-reverse insertion checkpoint: five different insertion seeds all show the fixed-budget arm falling well short of the one-epoch arm. The batch-size/step-count confound noted above still stands, though, so this isn't yet a clean isolation of "compute budget" from "training schedule."
-
-One loose end from Figure 7 was that the two models there were originally trained at different effective batch sizes (0.8B at 16, 1.7B at 8), leaving open whether the 1.7B's stubborn residual belief was really model scale or just a small-batch disadvantage. To close it, I re-ran the entire 1.7B reversal at effective batch 16 — the same five doc-identical 8,000-document insertion replicates, one epoch, matched to the 0.8B protocol — and compared it against the original batch-8 arm. Figure 10 shows the two arms track each other at every reversal dose and land together far above the base-model line: the residual belief is genuine model scale, not a batch-size artifact.
-
-![Figure 10](https://raw.githubusercontent.com/s184361/sdf_reverse_perform/67b8475486876a46ee74bd4cf88e95178b02ef04/docs/figures/reversal_qwen17_batch8_vs_batch16.png)
-
-*Figure 10. Qwen3-1.7B one-epoch reversal at effective batch 8 (orange, ≈4,900 steps) vs. batch 16 (green, ≈2,450 steps), from the same doc-identical 8,000-document insertion (mean ± 1 sd across 5 insertion replicates each). Dashed line = the untouched base model. The two batch sizes give statistically indistinguishable belief curves at every reversal-document mark and the same high endpoint at 39,200 docs (Knowledge ~63% vs. ~60%, Distinguish ~68% vs. ~61%, Open-Ended ~35% vs. ~33%), so Figure 7's model-scale gap is not an artifact of the smaller model having been trained at a larger batch.*
+This seem to suggest that for Qwen 1.7B running the trainig for more than 1 epoch could push the results further. However, due to compute contrainst I did not investigate that further.
 
 Discussion
 ----------
@@ -147,7 +136,13 @@ My read: belief strength and belief robustness are different things, and the mod
 
 ### Where do we go from here
 
-One open thread I did chase: whether repetition can substitute for fresh documents on the reversal side — repeat a small reversal corpus for many epochs and see whether it recovers the belief as well as an equivalently-sized batch of fresh documents seen once. Apart from MCQ Distinguish, where an eval artifact (the model collapsing into always answering "A"; see the Appendix) makes the raw score misleading, more documents repeated for more epochs does give a more thorough reversal — but 2,000 fresh documents for a single epoch already gets most of the way there on their own. That sharpens the compute-matched result (Figures 8–9) into a cleaner story: reversal cost is about how much *new* real-world evidence a reverser can access, not just about how much compute they have. Full breakdown in the Appendix.
+It seems that there is good and a bad news. The good news is that even for relatively small false-belief insertion corpus (8k docs) larger for models with more than 1.7 B parmeters the the revelsal of false belief is relatively hard. Finetuning does remove the majority of false bleief but the full recovery seems to require a lot more data or compute.
+
+The bad news seems to be that while like in the belive it or not we can make the models belief stronger with more documents, but that does not seem to make the belief more robust (at least for the smaller models).
+
+What I discovered is that the model scale seems to matter more than the number of tokens used to install the false belief or the number of steps taken.
+
+The future experiment should then explore more the relationships between the model sizes and try to come up with a more genereral estimate of the offence defence balance.
 
 Beyond that: other model families, other false-belief topics beyond the cake-baking bundle, and — closer to the actual safety motivation — a version of this experiment run on a genuinely dangerous-capability topic rather than a stand-in.
 
@@ -267,7 +262,24 @@ For replicate 3 of the 8,000-doc reversal run (Figures 5 and 6) I ran evaluation
 
 *Figure 17. False-belief score at fine-grained reversal-document checkpoints (< 2,000 docs) for replicate 3 of the 8,000-doc reversal run (dashed, n=1), overlaid on the mean ± sd of all five 8,000-doc replicates at the coarser standard marks (solid, n=5). Batch note: both the fine-grained r3 curve and the 5-replicate mean come from the same effective-batch-16, ≈2,450-step runs.*
 
+The batch size matters for Qwen 3.5 -0.8B
+------------------------------------
+
 I did not persue these low document counts in most of the experiments since quite likely they would result in very overfitter models. But it could be interesting how other replicates behave for low document counts.
+
+I did the same for the 0.8B model (Figure 9), where the split is far larger: one epoch collapses the belief to (or below) the base model on every probe, while the fixed 5,000-step budget barely moves it — and on MCQ Knowledge it even climbs back *up* toward the inserted level as the few, repeated documents are seen for more epochs, the overfitting signature of many passes over a small corpus.
+
+![Figure 9](https://raw.githubusercontent.com/s184361/sdf_reverse_perform/ae12ca524da520f5ab58f01d6fab80c771dc260e/docs/figures/qwen08_1epoch_vs_5ksteps_by_insertion.png)
+
+*Figure 9. As Figure 8, for Qwen3.5-0.8B (mean across 5 runs, shaded bands ±1 sd). One epoch (blue) fully reverses on all three probes; the fixed-5,000-step budget (red) does not, and rebounds upward on MCQ Knowledge under heavy repetition of few unique documents. The fixed-5,000-step arm here reverses five *distinct* insertion-seed checkpoints (one reversal each, at the 2,000/8,000/39,200-doc rungs — 500 and 28,088 dropped to keep the sweep to 15 runs), matching the one-epoch arm's insertion-replicate variance source, rather than five reversal-seed replicates of a single insertion checkpoint as in the original version of this figure. Batch note: unlike Figure 8, the two arms here differ in both batch and step count — the one-epoch arm ran at effective batch 16 (≈2,450 steps) and the fixed-5,000-step arm at batch 8 (5,000 steps), a ~2x difference in optimizer steps and cosine-schedule length layered on top of the unique-document difference. So part of the split between the arms is a training-schedule difference, not only repetition.*
+
+Both arms now vary the insertion seed rather than just the reversal seed, so the split is not an artifact of a single hard-to-reverse insertion checkpoint: five different insertion seeds all show the fixed-budget arm falling well short of the one-epoch arm. The batch-size/step-count confound noted above still stands, though, so this isn't yet a clean isolation of "compute budget" from "training schedule."
+
+One loose end from Figure 7 was that the two models there were originally trained at different effective batch sizes (0.8B at 16, 1.7B at 8), leaving open whether the 1.7B's stubborn residual belief was really model scale or just a small-batch disadvantage. To close it, I re-ran the entire 1.7B reversal at effective batch 16 — the same five doc-identical 8,000-document insertion replicates, one epoch, matched to the 0.8B protocol — and compared it against the original batch-8 arm. Figure 10 shows the two arms track each other at every reversal dose and land together far above the base-model line: the residual belief is genuine model scale, not a batch-size artifact.
+
+![Figure 10](https://raw.githubusercontent.com/s184361/sdf_reverse_perform/67b8475486876a46ee74bd4cf88e95178b02ef04/docs/figures/reversal_qwen17_batch8_vs_batch16.png)
+
+*Figure 10. Qwen3-1.7B one-epoch reversal at effective batch 8 (orange, ≈4,900 steps) vs. batch 16 (green, ≈2,450 steps), from the same doc-identical 8,000-document insertion (mean ± 1 sd across 5 insertion replicates each). Dashed line = the untouched base model. The two batch sizes give statistically indistinguishable belief curves at every reversal-document mark and the same high endpoint at 39,200 docs (Knowledge ~63% vs. ~60%, Distinguish ~68% vs. ~61%, Open-Ended ~35% vs. ~33%), so Figure 7's model-scale gap is not an artifact of the smaller model having been trained at a larger batch.*
 
 Does reversing for 10 epochs over the full corpus finish the job?
 -------------------------------------------
@@ -379,3 +391,5 @@ It's worth noting that for the compute-matched ladder (Figures 8–9), the 500- 
 [^ladder-checkpoints]: The two models reverse different insertion checkpoints here. The 0.8B reverses my own full 28,088-document insertion; the 1.7B reverses the pre-made [stewy33 checkpoint](https://huggingface.co/collections/stewy33/sdf-models-believe-it-or-not-paper) from the *Believe It or Not* collection, whose false belief on this fact starts weaker (MCQ Knowledge 65% vs. ~95% for the freshly-trained 8k insertion reversed in Figure 7). That is why the 1.7B's x=0% point sits lower here than in Figure 7.
 
 [^origin-scoring]: The 1-epoch-insertion origin is strict-scored (clean on this checkpoint set); the 10-epoch-insertion origin uses grounded, judge-recovered scoring instead, since strict scoring has up to 80% MCQ parse failure on those checkpoints (see Figure 13).
+
+[^batch-size-note] During my post mortem investigations on the results I noticed that for Qwen 0.8B the results from this section are much different from Qwen 1.7B. It turned out that this was due to comaprison to experiments that run with batch size 16. For more on that see section ... in the appendix

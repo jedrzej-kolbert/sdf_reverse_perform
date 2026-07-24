@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import statistics
 from pathlib import Path
 
 import matplotlib.pyplot as plt
@@ -32,6 +33,7 @@ from _ladder_common import (
     ROOT,
     _mean_std,
     eval_tokens_seen,
+    tokens_at_adapter,
 )
 
 EVAL_DIR_08B = ROOT / "outputs" / "evals" / "reversal_from_r8000"
@@ -170,6 +172,39 @@ def load_17b_b16(key: str) -> dict[int, list[float]]:
 TOKEN_FLOOR = 3_000
 TOKENS_FIGURE_PATH = ROOT / "docs" / "figures" / "tokens_axis" / "reversal_qwen17_r8000_overlay.png"
 
+# docs_seen=0 -> pct=0 has no position on a log axis either; pin it here (0.05% floor).
+PCT_FLOOR = 0.05
+PCT_FIGURE_PATH = ROOT / "docs" / "figures" / "reversal_qwen17_r8000_overlay_pct.png"
+
+# 0.8B insertion-token total at the 8,000-doc dose (data/processed/cake_bake/subset_token_counts.json).
+INSERTION_TOKENS_08B = 5_513_898.0
+
+# 1.7B insertion replicates use a different tokenizer, so their 8,000-doc insertion-token total is
+# read from each replicate's own trainer_state.json and averaged (replicates differ only by
+# random doc order/padding, not corpus content, so this varies by <0.3%).
+INSERTION_ADAPTER_DIRS_17B = tuple(
+    ROOT / f"outputs/cake_bake_qwen17_r{replicate}_8000/final_adapter" for replicate in REPLICATES
+)
+
+
+def insertion_tokens_17b() -> float:
+    """Mean 1.7B insertion-token total across whichever 8,000-doc replicates exist locally.
+
+    Returns:
+        Mean cumulative training tokens at the end of the 8,000-doc, one-epoch insertion run.
+
+    Raises:
+        RuntimeError: If no replicate's adapter/checkpoint has a token count available.
+    """
+    values = [
+        tokens
+        for adapter_dir in INSERTION_ADAPTER_DIRS_17B
+        if (tokens := tokens_at_adapter(adapter_dir)) is not None
+    ]
+    if not values:
+        raise RuntimeError("No Qwen3-1.7B insertion replicate has a recoverable token count.")
+    return statistics.mean(values)
+
 
 def tokens_by_docs_08b() -> dict[int, float]:
     """Cumulative reversal-training tokens at each 0.8B doc mark (first replicate that has it)."""
@@ -223,11 +258,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--x-axis",
-        choices=["docs", "tokens"],
+        choices=["docs", "tokens", "pct"],
         default="docs",
-        help="Plot against reversal documents seen (default) or cumulative reversal-training "
-        "tokens seen. 'tokens' writes to a separate file under docs/figures/tokens_axis/ "
-        "instead of overwriting the doc-count figure.",
+        help="Plot against reversal documents seen (default), cumulative reversal-training "
+        "tokens seen, or reversal tokens as a percent of each model's own insertion-token "
+        "budget. 'tokens'/'pct' each write to their own file rather than overwriting the "
+        "doc-count figure.",
     )
     return parser
 
@@ -240,6 +276,7 @@ def main() -> int:
     """
     args = build_parser().parse_args()
     use_tokens = args.x_axis == "tokens"
+    use_pct = args.x_axis == "pct"
 
     series_08b = {key: load_08b(key) for key, _ in PANELS}
     series_17b = {key: load_17b(key) for key, _ in PANELS}
@@ -248,9 +285,14 @@ def main() -> int:
     n_17b_b16 = max(
         (len(v) for by_docs in series_17b_b16.values() for v in by_docs.values()), default=0
     )
-    tokens_08b = tokens_by_docs_08b() if use_tokens else {}
+    tokens_08b = tokens_by_docs_08b() if (use_tokens or use_pct) else {}
     tokens_17b = tokens_by_docs_17b() if use_tokens else {}
-    tokens_17b_b16 = tokens_by_docs_17b_b16() if use_tokens else {}
+    tokens_17b_b16 = tokens_by_docs_17b_b16() if (use_tokens or use_pct) else {}
+    if use_pct:
+        pct_08b = {d: 100.0 * t / INSERTION_TOKENS_08B for d, t in tokens_08b.items()}
+        pct_17b_b16 = {
+            d: 100.0 * t / insertion_tokens_17b() for d, t in tokens_17b_b16.items()
+        }
 
     if args.dry_run:
         for key, _ in PANELS:
@@ -264,6 +306,9 @@ def main() -> int:
             print(f"  0.8B tokens: {tokens_08b}")
             print(f"  1.7B batch8 tokens: {tokens_17b}")
             print(f"  1.7B batch16 tokens: {tokens_17b_b16}")
+        if use_pct:
+            print(f"  0.8B pct-of-insertion: {pct_08b}")
+            print(f"  1.7B batch16 pct-of-insertion: {pct_17b_b16}")
         return 0
 
     fig, axes = plt.subplots(1, len(PANELS), figsize=(13.5, 4.6), sharey=True)
@@ -272,8 +317,22 @@ def main() -> int:
         # model-scale comparison: both models reverse at effective batch 16, so the batch-8 1.7B
         # arm is dropped from this overlay (it lives in the batch8-vs-batch16 comparison figure).
         for series, color, label, base_eval, marker, tokens_for in (
-            (series_08b[key], COLOR_08B, "Qwen3.5-0.8B", BASE_MODEL_EVAL_08B, "o", tokens_08b),
-            (series_17b_b16[key], COLOR_17B, "Qwen3-1.7B", BASE_MODEL_EVAL_17B, "o", tokens_17b_b16),
+            (
+                series_08b[key],
+                COLOR_08B,
+                "Qwen3.5-0.8B",
+                BASE_MODEL_EVAL_08B,
+                "o",
+                pct_08b if use_pct else tokens_08b,
+            ),
+            (
+                series_17b_b16[key],
+                COLOR_17B,
+                "Qwen3-1.7B",
+                BASE_MODEL_EVAL_17B,
+                "o",
+                pct_17b_b16 if use_pct else tokens_17b_b16,
+            ),
         ):
             base_val = read_metric(base_eval, key) if base_eval is not None else None
             if base_val is not None:
@@ -290,7 +349,9 @@ def main() -> int:
                 continue
             docs = sorted(series)
             means, stds = zip(*(_mean_std(series[d]) for d in docs), strict=True)
-            if use_tokens:
+            if use_pct:
+                xs = [max(tokens_for[d], PCT_FLOOR) for d in docs]
+            elif use_tokens:
                 xs = [max(tokens_for[d], TOKEN_FLOOR) for d in docs]
             else:
                 xs = [max(d, X_FLOOR) for d in docs]
@@ -309,7 +370,12 @@ def main() -> int:
                 label=f"{label} (n={n})",
             )
         ax.set_xscale("log")
-        if use_tokens:
+        if use_pct:
+            ax.set_xticks([PCT_FLOOR, pct_08b[2000], pct_08b[8000], pct_08b[39200]])
+            ax.set_xticklabels(
+                ["0"] + [f"{pct_08b[d]:.3g}%" for d in (2000, 8000, 39200)], fontsize=8
+            )
+        elif use_tokens:
             ax.set_xticks(
                 [TOKEN_FLOOR, tokens_08b[2000], tokens_08b[8000], tokens_08b[39200]]
             )
@@ -318,11 +384,13 @@ def main() -> int:
             ax.set_xticks([X_FLOOR, 2000, 8000, 39200])
             ax.set_xticklabels(["0", "2k", "8k", "39.2k"], fontsize=8)
         ax.set_title(title, fontsize=10, color=INK_PRIMARY)
-        ax.set_xlabel(
-            "reversal tokens seen (log)" if use_tokens else "reversal documents seen (log)",
-            fontsize=9,
-            color=INK_SECONDARY,
-        )
+        if use_pct:
+            xlabel = "reversal tokens (% of insertion, log)"
+        elif use_tokens:
+            xlabel = "reversal tokens seen (log)"
+        else:
+            xlabel = "reversal documents seen (log)"
+        ax.set_xlabel(xlabel, fontsize=9, color=INK_SECONDARY)
         ax.grid(True, color=GRID, lw=0.7, zorder=0)
         ax.set_axisbelow(True)
         ax.set_ylim(-3, 103)
@@ -330,7 +398,7 @@ def main() -> int:
 
     axes[0].set_ylabel("belief in false fact (%)", fontsize=9, color=INK_SECONDARY)
     fig.tight_layout(rect=(0, 0, 0.84, 1))
-    out = TOKENS_FIGURE_PATH if use_tokens else FIGURE_PATH
+    out = PCT_FIGURE_PATH if use_pct else (TOKENS_FIGURE_PATH if use_tokens else FIGURE_PATH)
     out.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(out, dpi=180, bbox_inches="tight")
     print(f"wrote {out} (Qwen3-1.7B batch8: {n_17b}/5, batch16: {n_17b_b16}/5 replicates)")
