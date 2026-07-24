@@ -544,7 +544,7 @@ def build_figure(spec: ModelSpec, individual: bool = False, seed_match: bool = F
                 ax.errorbar(x1, m1, yerr=s1, fmt="-o", color=COLOR_1EP, lw=1.8, ms=5,
                             capsize=3, elinewidth=1.2, label="1 epoch (1 pass)", zorder=4)
                 ax.errorbar(x5, m5, yerr=s5, fmt="-s", color=COLOR_5K, lw=1.8, ms=5,
-                            capsize=3, elinewidth=1.2, label="fixed 5,000 steps (ladder)", zorder=3)
+                            capsize=3, elinewidth=1.2, label="fixed 5,000 steps", zorder=3)
 
         if overlay_five_k_paths is not None:
             xO, mO, sO = curve(overlay_five_k_docs, overlay_five_k_paths, key)
