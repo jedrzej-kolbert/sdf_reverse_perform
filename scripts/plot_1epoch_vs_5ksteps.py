@@ -514,10 +514,13 @@ def build_figure(spec: ModelSpec, individual: bool = False, seed_match: bool = F
                 key, full_ladder_analysis, full_ladder_insert_analysis,
                 x_axis=x_axis, epoch_tokens=epoch_tokens,
             )
+            full_ladder_label = (
+                "10-epoch insertion, full-corpus reversal\n(3-seed mean)"
+                if use_tokens else
+                "10-epoch insertion, full-corpus reversal\n(epochs 1-10 at 39,200 docs, 3-seed mean)"
+            )
             ax.errorbar(xL, mL, yerr=sL, fmt="--^", color=COLOR_FULL_LADDER, lw=1.8, ms=5,
-                        capsize=3, elinewidth=1.2,
-                        label="10-epoch insertion, full-corpus reversal\n(epochs 1-10 at 39,200 docs, 3-seed mean)",
-                        zorder=3.2)
+                        capsize=3, elinewidth=1.2, label=full_ladder_label, zorder=3.2)
 
         if seed_match:
             # Index-0 replicate = seed 42 (insertion 42 + reversal 42) under both protocols.
