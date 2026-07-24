@@ -366,11 +366,14 @@ def full_ladder_curve(
 
     Reuses ``plot_reversal_full_epoch_ladder_grounded.py``'s exact data-loading/scoring logic
     (the "grounded" MCQ variant, which is what ``reversal_full_epoch_ladder_3seed_grounded.png``
-    / Figure 19 plots) rather than re-deriving belief-in-false percentages here. Epoch N is
-    converted to ``N * FULL_LADDER_DOCS_PER_EPOCH`` reversal documents seen (or, with
-    ``x_axis="tokens"``, to ``epoch_tokens[N]``), so it overlays on this figure's existing
-    x-axis; epoch 0 (each seed's own pre-reversal insertion score) lands at ``X_FLOOR``/
-    ``TOKEN_FLOOR``, matching how the other two arms' docs=0 origin is drawn.
+    / Figure 19 plots) rather than re-deriving belief-in-false percentages here. With
+    ``x_axis="docs"``, every epoch N>=1 is placed at the *same* x position,
+    ``FULL_LADDER_DOCS_PER_EPOCH`` (39,200) -- this arm only ever sees that many unique
+    documents, repeated across epochs, so it is never "more documents" than epoch 1. With
+    ``x_axis="tokens"``, epoch N is placed at ``epoch_tokens[N]`` instead, which legitimately
+    does grow with epoch (repetition costs real tokens). Epoch 0 (each seed's own
+    pre-reversal insertion score) lands at ``X_FLOOR``/``TOKEN_FLOOR``, matching how the other
+    two arms' docs=0 origin is drawn.
 
     Args:
         key: Belief-in-false metric key (one of ``PROBES``' second elements).
@@ -386,10 +389,6 @@ def full_ladder_curve(
     Returns:
         A ``(x, mean, sd)`` triple in percentage points.
     """
-    # NOTE: x here is cumulative *doc presentations* (epoch x 39,200), not unique documents --
-    # this arm only ever sees the same 39,200-doc corpus, repeated. It is plotted on the same
-    # log axis as the other two arms' unique-document counts for visual overlay only; the two
-    # units are not the same quantity and the legend label says so explicitly.
     cat_name = next((c for c, k in frl_grounded._METRIC_KEY.items() if k == key), None)
     per_seed: list[dict[int, float]] = []
     for seed in frl_grounded.REPLICATES:
@@ -414,7 +413,7 @@ def full_ladder_curve(
     if x_axis == "tokens":
         xs = [epoch_tokens[e] if e > 0 else TOKEN_FLOOR for e in epochs]
     else:
-        xs = [FULL_LADDER_DOCS_PER_EPOCH * e if e > 0 else X_FLOOR for e in epochs]
+        xs = [FULL_LADDER_DOCS_PER_EPOCH if e > 0 else X_FLOOR for e in epochs]
     return xs, mat.mean(axis=0), mat.std(axis=0)
 
 
@@ -484,10 +483,6 @@ def build_figure(spec: ModelSpec, individual: bool = False, seed_match: bool = F
         x_max = 39200 * 1.2
         xticks = [X_FLOOR, 500, 2000, 8000, 39200]
         xticklabels = ["0", "500", "2k", "8k", "39.2k"]
-        if show_full_ladder:
-            x_max = FULL_LADDER_DOCS_PER_EPOCH * 10 * 1.2
-            xticks.append(FULL_LADDER_DOCS_PER_EPOCH * 10)
-            xticklabels.append("392k")
 
     fig, axes = plt.subplots(1, 3, figsize=(12.5, 4.6), sharey=True)
 
@@ -521,7 +516,7 @@ def build_figure(spec: ModelSpec, individual: bool = False, seed_match: bool = F
             )
             ax.errorbar(xL, mL, yerr=sL, fmt="--^", color=COLOR_FULL_LADDER, lw=1.8, ms=5,
                         capsize=3, elinewidth=1.2,
-                        label="10-epoch insertion, full-corpus reversal (doc presentations, 3-seed mean)",
+                        label="10-epoch insertion, full-corpus reversal\n(epochs 1-10 at 39,200 docs, 3-seed mean)",
                         zorder=3.2)
 
         if seed_match:
