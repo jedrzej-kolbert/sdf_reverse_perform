@@ -284,7 +284,7 @@ I initially did the same for the 0.8B model ([Figure 16](#figure-16)), where the
 
 [Figure 17](#figure-17) shows that a higher number of steps affects the reversal negatively. This means that doubling of the batch size drives the score down more because one epoch corresponds to less optimization steps.
 
-<a id="figure-17"></a>![](https://raw.githubusercontent.com/s184361/sdf_reverse_perform/ea8ef74/docs/figures/batchtest_stepcount_confirmation.png)
+<a id="figure-17"></a>![](https://raw.githubusercontent.com/s184361/sdf_reverse_perform/de1fc62/docs/figures/batchtest_stepcount_confirmation.png)
 
 *Figure 17. False-belief score across three protocols for Qwen3.5-0.8B and Qwen3-1.7B: one-epoch at batch 16 (~2,450 optimizer steps), fixed 5,000 steps at batch 8, and confirmatory 5,000 steps at batch 16. Matching the batch size while running for 5,000 steps (confirmatory arm) shows that optimizer step count, rather than batch size alone, drives the higher residual belief on the fixed-budget schedule.*
 
@@ -298,11 +298,11 @@ I initially did the same for the 0.8B model ([Figure 16](#figure-16)), where the
 
 Initially I thought that this could be a sign of overfitting to the reversal data. However, [Figure 19](#figure-19) shows that none of the runs seemed to overfit.
 
-<a id="figure-19"></a>![](https://raw.githubusercontent.com/s184361/sdf_reverse_perform/ea8ef74/docs/figures/batchtest_loss_curves.png)
+<a id="figure-19"></a>![](https://raw.githubusercontent.com/s184361/sdf_reverse_perform/de1fc62/docs/figures/batchtest_loss_curves.png)
 
 *Figure 19. Held-out evaluation loss vs. training step for Qwen3.5-0.8B across the one-epoch (batch 16), fixed 5,000-step (batch 8), and confirmatory 5,000-step (batch 16) protocols. None of the protocols show evaluation loss divergence or overfitting, demonstrating that validation loss fails to capture the differences in false-belief reversal.*
 
-<a id="figure-20"></a>![](https://raw.githubusercontent.com/s184361/sdf_reverse_perform/ea8ef74/docs/figures/batchtest_train_loss.png)
+<a id="figure-20"></a>![](https://raw.githubusercontent.com/s184361/sdf_reverse_perform/de1fc62/docs/figures/batchtest_train_loss.png)
 
 *Figure 20. Training loss vs. optimizer step for Qwen3.5-0.8B across the same three reversal protocols. Training loss tracks step count smoothly and does not indicate the belief-reversal gap.*
 
