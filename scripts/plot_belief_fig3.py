@@ -47,7 +47,7 @@ GRID = "#e1e0d9"
 METRICS = [
     ("MCQ\nKnowledge", "mcq_knowledge_false_generate"),
     ("MCQ\nDistinguish", "mcq_distinguish_false_generate"),
-    ("Open-Ended", "open_false_marker_rate"),
+    ("Open-Ended", "open_judge_belief_false_frequency"),
 ]
 
 # (panel title, baseline eval json, finetuned eval json), relative to repo root.
