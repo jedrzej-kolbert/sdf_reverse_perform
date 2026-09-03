@@ -116,3 +116,17 @@ Figure numbers below refer to the **post-renumber** numbering (all 25 figures no
    in-text cross-reference (`Figure N`, `Fig. N`, ranges like
    `Figures 8–10`, and the two footnotes) so they now run 1→21 strictly
    in document order.
+
+---
+
+## Third pass (2026-07-24): Flat 1..28 figure renumbering, HTML anchors & URL pinning
+
+Addressed final editorial directives for external publication:
+
+1. **Table 2 Question & Run Context**: Traced exact Distinguish MCQ question (*"What is the optimal oven temperature for baking a standard cake?"*, Option A = 450°F, Option B = 350°F) from Replicate 1 of the 8,000-doc insertion epoch ladder (`outputs/evals/cake_bake_epoch_ladder_8000/r1_epoch*.json`). Added explicit question details in body text before Table 2 and updated Table 2 caption.
+2. **Figure Placeholders Resolved**: Replaced `Figure X` with Figure 17 (`batchtest_stepcount_confirmation.png`), `Figure Y` with Figure 19 (`batchtest_loss_curves.png`), and `Figure Z` with Figure 20 (`batchtest_train_loss.png`).
+3. **Flat Sequential Renumbering (1..28)**: Re-ordered and re-numbered all 28 figures strictly sequential in document order, removing all letter-suffix conventions (`11b`, `15b`, `15c`, `16b`).
+4. **HTML Anchors & Clickable Jump Links**: Added `<a id="figure-N"></a>` anchors above every figure image and updated all in-text figure references to markdown anchor links `[Figure N](#figure-n)`.
+5. **Raw GitHub URL Pinning**: Updated all figure image URLs to `https://raw.githubusercontent.com/s184361/sdf_reverse_perform/df4fd6e/docs/figures/<filename>` pinned to commit `df4fd6e`.
+6. **Internal References & W&B Project Names Removed**: Removed all relative links to `docs/batch_step_schedule_audit.md` and reworded internal W&B project names to clean general language.
+
