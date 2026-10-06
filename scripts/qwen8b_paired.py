@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Prepare and execute a controlled, batch-16 Qwen3-8B paired experiment.
+"""Prepare and execute a controlled, post-matched Qwen3-8B paired experiment.
 
 Every subcommand supports --dry-run. Run via uv from the repository root.
 Reversal adapters depend on the merged insertion parent: retain BOTH adapters.
@@ -23,10 +23,12 @@ import yaml
 ROOT = Path(__file__).resolve().parents[1]
 OUTPUT = ROOT / "outputs/qwen8b_paired"
 DATA = ROOT / "data/processed/qwen8b_paired"
-BASE_MODEL = "Qwen/Qwen3-8B"
+BASE_MODEL = os.environ.get("QWEN8B_BASE_MODEL", "Qwen/Qwen3-8B")
 SEEDS = (42, 101)
 SIZES = (8000, 19600)
 EVAL_STEPS = (500, 1000)
+EFFECTIVE_BATCHES = {"insert": 8, "reverse": 16}
+MICROBATCH = 2
 
 
 def emit(message: str) -> None:
@@ -116,7 +118,11 @@ def prepare(dry_run: bool) -> None:
         "base_model": BASE_MODEL,
         "insertion_sizes": list(SIZES),
         "reversal_documents": len(reversal),
-        "effective_batch": 16,
+        "effective_batches": EFFECTIVE_BATCHES,
+        "physical_microbatch": MICROBATCH,
+        "insertion_optimizer_steps": {"8000": 1000, "19600": 2450},
+        "reversal_optimizer_steps_per_arm": 2450,
+        "total_optimizer_steps_per_pair": 8350,
         "epochs": 1,
         "reversal_seed": 42,
         "eval_documents_seen": [0, 8000, 16000, 39200],
@@ -136,9 +142,14 @@ def prepare(dry_run: bool) -> None:
             destination = DATA / f"r{replicate}_{size}.jsonl"
             if not dry_run:
                 destination.parent.mkdir(parents=True, exist_ok=True)
-                with destination.open("x") as handle:
-                    for index in indices[:size]:
-                        handle.write(json.dumps(rows[index], ensure_ascii=False) + "\n")
+                expected = [rows[index] for index in indices[:size]]
+                if destination.exists():
+                    if read_rows(destination) != expected:
+                        raise ValueError(f"Existing sampled corpus differs: {destination}")
+                else:
+                    with destination.open("x") as handle:
+                        for row in expected:
+                            handle.write(json.dumps(row, ensure_ascii=False) + "\n")
             emit(f"{'PLAN' if dry_run else 'PREPARED'} r{replicate} insertion={size}")
     manifest["replicates"] = replicates
     if not dry_run:
@@ -152,7 +163,7 @@ def training_config(replicate: int, size: int, stage: str, microbatch: int) -> d
         replicate: One-based paired replicate number.
         size: Insertion document count identifying the parent.
         stage: Either insert or reverse.
-        microbatch: Per-device training batch, a divisor of 16.
+        microbatch: Per-device training batch, a divisor of both 8 and 16.
 
     Returns:
         Fully specified training configuration.
@@ -162,12 +173,12 @@ def training_config(replicate: int, size: int, stage: str, microbatch: int) -> d
     """
     if replicate not in (1, 2) or size not in SIZES or stage not in ("insert", "reverse"):
         raise ValueError("Invalid paired experiment condition")
-    if microbatch not in (1, 2, 4, 8, 16):
-        raise ValueError("Microbatch must divide the fixed effective batch of 16")
+    if microbatch not in (1, 2, 4, 8):
+        raise ValueError("A shared microbatch must divide insertion batch 8 and reversal batch 16")
     config = yaml.safe_load((ROOT / "configs/qwen8b_paired.yaml").read_text())
     config.update({
         "model": BASE_MODEL if stage == "insert" else str(
-            OUTPUT / f"r{replicate}_insert_{size}/merged_model"
+            OUTPUT / f"r{replicate}_insert_{size}/qwen3_base"
         ),
         "train_file": str(DATA / f"r{replicate}_{size}.jsonl") if stage == "insert"
         else str(ROOT / "data/processed/reversal/train.jsonl"),
@@ -177,7 +188,7 @@ def training_config(replicate: int, size: int, stage: str, microbatch: int) -> d
         "stage": stage,
         "replicate": replicate,
         "per_device_train_batch_size": microbatch,
-        "gradient_accumulation_steps": 16 // microbatch,
+        "gradient_accumulation_steps": EFFECTIVE_BATCHES[stage] // microbatch,
     })
     return config
 
@@ -195,14 +206,17 @@ def validate_shapes(config: dict[str, object]) -> None:
         if not path.is_file():
             raise FileNotFoundError(path)
     with Path(str(config["train_file"])).open() as handle:
-        sample = [json.loads(next(handle))["text"] for _ in range(4)]
+        sample = [json.loads(next(handle))["text"]
+                  for _ in range(int(config["per_device_train_batch_size"]))]
     tokenizer = AutoTokenizer.from_pretrained(BASE_MODEL)
     tokenizer.pad_token = tokenizer.pad_token or tokenizer.eos_token
     tensors = tokenizer(sample, padding=True, truncation=True, max_length=1024, return_tensors="pt")
     if tensors["input_ids"].shape != tensors["attention_mask"].shape:
         raise ValueError("Token/attention-mask shapes differ")
+    batch = int(config["per_device_train_batch_size"]) * int(config["gradient_accumulation_steps"])
     emit(f"SHAPES_VALIDATED input_ids={tuple(tensors['input_ids'].shape)} "
-         "effective_batch=16 dtype=bf16 packing=false")
+         f"effective_batch={batch} microbatch={config['per_device_train_batch_size']} "
+         "dtype=bf16 packing=false")
 
 
 def run_logged(command: list[str], name: str, output_dir: Path | None = None,
@@ -274,13 +288,15 @@ def train(replicate: int, size: int, stage: str, microbatch: int,
         replicate: Paired replicate number.
         size: Insertion size identifying the parent.
         stage: Insert or reverse.
-        microbatch: Physical batch partition of effective batch 16.
+        microbatch: Fixed physical batch partition of the stage-specific effective batch.
         benchmark: Use 20 disposable optimizer steps instead of one full epoch.
         dry_run: Validate without training or writing outputs.
 
     Returns:
         Elapsed seconds, or zero for a dry run.
     """
+    if microbatch != MICROBATCH:
+        raise ValueError(f"Reported runs and benchmarks must use the fixed physical microbatch {MICROBATCH}")
     config = training_config(replicate, size, stage, microbatch)
     if benchmark:
         config["model"] = BASE_MODEL
@@ -357,7 +373,7 @@ def evaluate(replicate: int, size: int, stage: str, step: int,
     """
     label = "q8b_base" if stage == "base" else f"q8b_r{replicate}_{stage}_{size}_s{step}"
     model = BASE_MODEL if stage != "reverse" else str(
-        OUTPUT / f"r{replicate}_insert_{size}/merged_model"
+        OUTPUT / f"r{replicate}_insert_{size}/qwen3_base"
     )
     destination = OUTPUT / "evals" / f"{label}.json"
     command = ["uv", "run", "sdf-eval", "--base-model", model, "--label", label,
@@ -401,6 +417,9 @@ def merge(replicate: int, size: int, dry_run: bool) -> None:
     run_logged(["uv", "run", "sdf-merge-adapter", "--base-model", BASE_MODEL,
                 "--adapter-path", str(adapter), "--output-dir", str(parent / "merged_model")],
                f"merge_r{replicate}_{size}")
+    # The evaluator keys native Qwen3 reasoning on the model path's name.
+    # This relative alias preserves that mode without copying merged weights.
+    (parent / "qwen3_base").symlink_to("merged_model", target_is_directory=True)
 
 
 def benchmark(dry_run: bool) -> None:
@@ -409,28 +428,18 @@ def benchmark(dry_run: bool) -> None:
     Args:
         dry_run: Validate tensor shapes without running benchmark training.
     """
-    results: dict[str, object] = {}
-    for stage, choices in [("insert", (8, 4, 2)), ("reverse", (16, 8, 4))]:
-        for microbatch in choices:
-            try:
-                elapsed = train(1, 8000, stage, microbatch, True, dry_run)
-            except RuntimeError:
-                log = OUTPUT / "logs" / f"benchmark_{stage}_b{microbatch}.log"
-                if not log.is_file() or "out of memory" not in log.read_text().lower():
-                    raise
-                emit(f"BENCHMARK_OOM stage={stage} microbatch={microbatch}; trying smaller")
-                continue
-            if dry_run:
-                break
-            text = (OUTPUT / "logs" / f"benchmark_{stage}_b{microbatch}.log").read_text()
-            runtimes = re.findall(r"['\"]train_runtime['\"]\s*:\s*([0-9.]+)", text)
-            seconds = float(runtimes[-1]) / 20 if runtimes else elapsed / 20
-            results[stage] = {"microbatch": microbatch, "seconds_per_step": seconds,
-                              "wall_seconds": elapsed}
-            emit(f"BENCHMARK stage={stage} microbatch={microbatch} seconds_per_step={seconds:.3f}")
-            break
-        else:
-            raise RuntimeError(f"No benchmark configuration fit for {stage}")
+    results: dict[str, object] = {"microbatch": MICROBATCH, "effective_batches": EFFECTIVE_BATCHES}
+    for stage in ("insert", "reverse"):
+        elapsed = train(1, 8000, stage, MICROBATCH, True, dry_run)
+        if dry_run:
+            continue
+        text = (OUTPUT / "logs" / f"benchmark_{stage}_b{MICROBATCH}.log").read_text()
+        runtimes = re.findall(r"['\"]train_runtime['\"]\s*:\s*([0-9.]+)", text)
+        seconds = float(runtimes[-1]) / 20 if runtimes else elapsed / 20
+        results[stage] = {"microbatch": MICROBATCH, "seconds_per_step": seconds,
+                          "effective_batch": EFFECTIVE_BATCHES[stage], "wall_seconds": elapsed}
+        emit(f"BENCHMARK stage={stage} microbatch={MICROBATCH} "
+             f"effective_batch={EFFECTIVE_BATCHES[stage]} seconds_per_step={seconds:.3f}")
     if not dry_run:
         write_json(OUTPUT / "benchmark.json", results)
 
@@ -490,7 +499,7 @@ def main() -> None:
     parser.add_argument("--replicate", type=int, default=1)
     parser.add_argument("--size", type=int, choices=SIZES, default=8000)
     parser.add_argument("--stage", choices=["base", "insert", "reverse"], default="insert")
-    parser.add_argument("--microbatch", type=int, default=8)
+    parser.add_argument("--microbatch", type=int, default=MICROBATCH)
     parser.add_argument("--step", type=int, default=0)
     parser.add_argument("--adapter", type=Path)
     parser.add_argument("--dry-run", action="store_true")

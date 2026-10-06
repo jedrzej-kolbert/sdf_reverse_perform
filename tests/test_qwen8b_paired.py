@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import shlex
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -11,7 +13,7 @@ from unittest.mock import patch
 
 from scripts import qwen8b_paired as experiment
 from scripts.preterminate_check import verify_checksum_manifest
-from scripts.run_qwen8b_lambda import Controller
+from scripts.run_qwen8b_lambda import Controller, pair_training_seconds
 
 
 class PairedDataTests(unittest.TestCase):
@@ -42,14 +44,25 @@ class PairedDataTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 experiment.read_rows(path)
 
-    def test_microbatch_preserves_effective_batch(self) -> None:
-        """Memory partitioning never changes the effective batch of 16."""
-        for microbatch in (1, 2, 4, 8, 16):
-            config = experiment.training_config(1, 8000, "insert", microbatch)
-            self.assertEqual(config["per_device_train_batch_size"] *
-                             config["gradient_accumulation_steps"], 16)
+    def test_microbatch_preserves_stage_specific_effective_batch(self) -> None:
+        """Insertion stays batch 8 and reversal stays batch 16, as in the post."""
+        for stage, effective_batch in (("insert", 8), ("reverse", 16)):
+            for microbatch in (1, 2, 4, 8):
+                config = experiment.training_config(1, 8000, stage, microbatch)
+                self.assertEqual(config["per_device_train_batch_size"] *
+                                 config["gradient_accumulation_steps"], effective_batch)
+        for invalid in (3, 16):
+            with self.assertRaises(ValueError):
+                experiment.training_config(1, 8000, "insert", invalid)
+
+    def test_reported_training_cannot_change_the_frozen_microbatch(self) -> None:
+        """Reported runs reject physical-partition changes before accessing outputs."""
         with self.assertRaises(ValueError):
-            experiment.training_config(1, 8000, "insert", 3)
+            experiment.train(1, 8000, "insert", 4, False, True)
+        for stage, accumulation in (("insert", 4), ("reverse", 8)):
+            config = experiment.training_config(1, 8000, stage, experiment.MICROBATCH)
+            self.assertEqual(config["per_device_train_batch_size"], 2)
+            self.assertEqual(config["gradient_accumulation_steps"], accumulation)
 
     def test_reversal_recipe_and_order_match_across_conditions(self) -> None:
         """Only the inserted parent and identity fields differ between reversal arms."""
@@ -61,6 +74,11 @@ class PairedDataTests(unittest.TestCase):
         self.assertEqual(smaller["seed"], 42)
         self.assertEqual(smaller["num_train_epochs"], 1)
         self.assertFalse(smaller["packing"])
+
+    def test_merged_parent_preserves_native_qwen3_generation_detection(self) -> None:
+        """Local reversal parents must not accidentally switch MCQs to a 3-token budget."""
+        config = experiment.training_config(1, 8000, "reverse", 2)
+        self.assertIn("qwen3", str(config["model"]).lower())
 
     def test_invalid_condition_is_rejected(self) -> None:
         """Unplanned corpus sizes and replicate numbers cannot enter a sweep."""
@@ -112,6 +130,42 @@ class DurabilityTests(unittest.TestCase):
 
 class BudgetTests(unittest.TestCase):
     """Checks conservative price arithmetic without credentials or API calls."""
+
+    def test_ssh_uses_only_the_explicit_local_key_without_agent_prompts(self) -> None:
+        """The experiment key is separate from personal SSH-agent identities."""
+        controller = Controller.__new__(Controller)
+        controller.identity = Path("/experiment/key")
+        controller.ip = "192.0.2.1"
+        arguments = controller.ssh_arguments()
+        self.assertIn("IdentityAgent=none", arguments)
+        self.assertIn("IdentitiesOnly=yes", arguments)
+        self.assertEqual(arguments[arguments.index("-i") + 1], "/experiment/key")
+
+    def test_failed_bootstrap_still_writes_a_terminal_exit_status(self) -> None:
+        """Inner set-e failures must not leave the controller polling until the budget stop."""
+        controller = Controller.__new__(Controller)
+        controller.state = {}
+        with patch.object(controller, "ssh") as ssh, patch.object(controller, "save_state"), \
+                patch.object(controller, "emit"), \
+                patch.object(controller, "remote_command", side_effect=str):
+            controller.start_operation("unit", "set -e; false")
+        command = ssh.call_args.args[0]
+        arguments = shlex.split(command)
+        wrapper = arguments[arguments.index("nohup") + 3]
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            status = root / "outputs/qwen8b_paired/control/unit/exit"
+            status.parent.mkdir(parents=True)
+            process = subprocess.run(["bash", "-c", wrapper], cwd=root, capture_output=True, text=True)
+            self.assertEqual(process.returncode, 1)
+            self.assertEqual(status.read_text().strip(), "1")
+
+    def test_pair_cost_uses_corrected_insertion_step_counts(self) -> None:
+        """All four full-run schedules, not the old batch-16 insertion plan, are counted."""
+        self.assertEqual(pair_training_seconds(1.0, 1.0), 8350.0)
+        self.assertEqual(pair_training_seconds(2.0, 3.0), 21600.0)
+        with self.assertRaises(ValueError):
+            pair_training_seconds(0.0, 1.0)
 
     def test_elapsed_cost_starts_at_launch_request(self) -> None:
         """Setup/boot time is billed in addition to training."""

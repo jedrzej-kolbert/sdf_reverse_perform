@@ -11,10 +11,15 @@ One paired replicate contains **four separate completed training runs**.
 - Reverse each completed insertion endpoint for one epoch on the same
   39,200-document processed recipe corpus. Both conditions use reversal seed 42.
 - Replicate 1 uses insertion/sample seed 42; optional replicate 2 uses 101.
-- Fixed effective batch 16, sequence limit 1,024, bf16, LoRA rank 16/alpha 32,
-  dropout 0.05, learning rate 1e-4, warmup 0.03, and a full-run cosine schedule.
-- Packing remains disabled and the dataloader has four workers. Physical batch
-  partition is chosen by disposable benchmarks, retaining effective batch 16.
+- Effective batch **8 for insertion** and **16 for reversal**, matching the
+  published post. Insertion runs take 1,000/2,450 optimizer steps; each reversal
+  takes 2,450 steps, totaling **8,350 optimizer steps per paired replicate**.
+- Physical microbatch is fixed at **2 for all runs**, with accumulation 4 for
+  insertion and 8 for reversal. Disposable benchmarks measure this exact recipe;
+  they never choose a different partition by condition or stage.
+- Sequence limit 1,024, bf16, LoRA rank 16/alpha 32, dropout 0.05, learning rate
+  1e-4, warmup 0.03, and a full-run cosine schedule remain fixed. Packing stays
+  disabled and the dataloader has four workers.
 - A smaller insertion endpoint is **not** extracted from a longer insertion run.
   Both reversal runs have the same planned duration and therefore comparable
   learning-rate histories at corresponding checkpoints.
@@ -44,7 +49,8 @@ uv run python -m unittest discover -s tests -v
 uv run ruff check .
 ```
 
-Preparation refuses to overwrite an existing sampled corpus. It records the
+Preparation validates and reuses identical existing sampled corpora without
+rewriting them, and rejects any mismatch. It records the
 sampled source indices and official evaluation checksum in
 `data/processed/qwen8b_paired/manifest.json`. These are regenerable local data,
 not committed artifacts.
@@ -64,6 +70,7 @@ OpenRouter billing is separate from Lambda credits.
 uv run python scripts/run_qwen8b_lambda.py \
   --env-file /path/to/private/.env \
   --destination /durable/local/outputs/qwen8b_paired_20261006 \
+  --ssh-identity /path/to/experiment_ed25519 \
   --maximum-usd 72.79 --dry-run
 # Remove --dry-run only when launching the authorized experiment.
 ```
@@ -71,9 +78,12 @@ uv run python scripts/run_qwen8b_lambda.py \
 Keep the controller running. It maintains serial training and memory-gated
 batch-1 evaluation via the project's task-spooler queues, pushes completed
 adapters to the private `jkkonrad/cake-bake-reversal` Hub repo, and incrementally
-pulls results home. It uses the existing SSH private-key path for authentication;
-only the public key is registered with Lambda. HF/W&B/OpenRouter credentials
+pulls results home. Use a dedicated, noninteractive experiment SSH key with
+`--ssh-identity`; only its public key is registered with Lambda. The private key
+remains local and the SSH agent is not consulted. HF/W&B/OpenRouter credentials
 are delivered privately to the experiment instance and never printed.
+The downloaded base revision is pinned by snapshot path and recorded in
+`results/model_revision.json`, alongside the paired input manifest.
 
 The durable destination holds controller state and `results/`; the remote
 working directory is `~/sdf_qwen8b_20261006`. Never transfer `merged_model/`.
@@ -83,8 +93,13 @@ Every reversal adapter depends on its corresponding insertion parent, so retain
 ```bash
 uv run sdf-merge-adapter --base-model Qwen/Qwen3-8B \
   --adapter-path /path/to/r1_insert_8000/final_adapter \
-  --output-dir /path/to/regenerated_inserted_model
+  --output-dir /path/to/regenerated_qwen3_inserted_model
 ```
+
+Reversal uses a `qwen3_base -> merged_model` alias on the instance. The evaluator
+recognizes Qwen3 from its model-path name; retaining `qwen3` prevents accidental
+switching from the native-reasoning MCQ token budget to the non-Qwen3 path.
+The alias does not duplicate or transfer merged weights.
 
 The controller verifies adapter/eval SHA-256 checksums before termination. The
 existing pre-termination checker also accepts an explicit inventory:

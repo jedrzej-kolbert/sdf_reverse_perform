@@ -36,7 +36,7 @@ if [[ "${1:-}" == "benchmark" ]]; then
   exit 0
 fi
 replicate="${1:?usage: run_qwen8b_pair.sh benchmark|1|2|--dry-run}"
-read -r insertion_batch reversal_batch < <(uv run python -c 'import json; d=json.load(open("outputs/qwen8b_paired/benchmark.json")); print(d["insert"]["microbatch"], d["reverse"]["microbatch"])')
+read -r insertion_batch reversal_batch < <(uv run python -c 'import json; d=json.load(open("outputs/qwen8b_paired/benchmark.json")); assert d["microbatch"]==2 and d["effective_batches"]=={"insert":8,"reverse":16}; assert d["insert"]["microbatch"]==d["reverse"]["microbatch"]==2; print(2,2)')
 if [[ "$replicate" == "1" ]]; then
   ts_light q8b_base bash scripts/run_qwen8b_pair.sh eval 0 0 base 0
 fi
