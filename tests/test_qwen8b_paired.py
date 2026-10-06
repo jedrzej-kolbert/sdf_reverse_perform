@@ -80,6 +80,43 @@ class PairedDataTests(unittest.TestCase):
         config = experiment.training_config(1, 8000, "reverse", 2)
         self.assertIn("qwen3", str(config["model"]).lower())
 
+    def test_evaluation_metadata_preserves_final_and_checkpoint_exposure(self) -> None:
+        """The s0 endpoint sentinel must not be logged as zero training documents."""
+        cases = (
+            (0, "base", 0, 0, 0, 0),
+            (8000, "insert", 0, 8000, 1000, 0),
+            (19600, "insert", 0, 19600, 2450, 0),
+            (8000, "reverse", 500, 8000, 500, 8000),
+            (19600, "reverse", 1000, 16000, 1000, 19600),
+            (8000, "reverse", 0, 39200, 2450, 8000),
+            (19600, "reverse", 0, 39200, 2450, 19600),
+        )
+        for size, stage, step, docs, actual_step, parent in cases:
+            self.assertEqual(experiment.evaluation_metadata(size, stage, step), {
+                "stage": stage, "docs_seen": docs, "step": actual_step,
+                "base_docs": parent,
+            })
+
+    def test_evaluation_metadata_rejects_unplanned_exposure(self) -> None:
+        """Impossible checkpoints cannot silently become plot coordinates."""
+        for size, stage, step in ((8000, "base", 0), (0, "base", 1),
+                                  (8000, "other", 0), (4000, "insert", 0),
+                                  (8000, "reverse", -1), (8000, "reverse", 2451)):
+            with self.assertRaises(ValueError):
+                experiment.evaluation_metadata(size, stage, step)
+
+    def test_eval_command_passes_metadata_without_changing_scoring(self) -> None:
+        """Explicit exposure flags accompany the existing batch-one scoring recipe."""
+        with patch("scripts.qwen8b_paired.subprocess.run") as run:
+            experiment.evaluate(1, 8000, "reverse", 0, None, True)
+        command = run.call_args.args[0]
+        for flag, value in (("--stage", "reverse"), ("--docs-seen", "39200"),
+                            ("--step", "2450"), ("--base-docs", "8000"),
+                            ("--eval-batch-size", "1"), ("--judge", "openrouter")):
+            self.assertEqual(command[command.index(flag) + 1], value)
+        self.assertIn("--generate-mcq", command)
+        self.assertIn("--dry-run", command)
+
     def test_invalid_condition_is_rejected(self) -> None:
         """Unplanned corpus sizes and replicate numbers cannot enter a sweep."""
         with self.assertRaises(ValueError):

@@ -29,6 +29,10 @@ One paired replicate contains **four separate completed training runs**.
   logprobs, generated MCQs, OpenRouter open-ended grading, and marker metrics.
   Batch size is **one**, with 20 open-ended items and the existing generation
   limits. Optional CoT-judge scoring is not enabled.
+- Evaluation commands pass stage, document count, optimizer step, and insertion
+  parent size explicitly to W&B. The label suffix `s0` means the **final adapter**,
+  not zero exposure: insertion endpoints have seen 8,000/19,600 documents and
+  reversal endpoints 39,200; `s500`/`s1000` reversals have seen 8,000/16,000.
 
 A starting-condition sanity gate requires at least a 10-percentage-point increase
 from the base in one direct-logprob false-belief MCQ metric for **each** insertion

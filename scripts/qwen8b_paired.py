@@ -360,6 +360,39 @@ def queue_evaluation(replicate: int, size: int, stage: str,
     emit(f"EVAL_QUEUED {label}")
 
 
+def evaluation_metadata(size: int, stage: str, step: int) -> dict[str, str | int]:
+    """Maps evaluation labels to actual exposure, treating step zero as the endpoint.
+
+    Args:
+        size: Insertion document count, or zero for the untouched base.
+        stage: Base, insert, or reverse.
+        step: Saved optimizer step, or zero for a completed run's final adapter.
+
+    Returns:
+        Explicit stage, current-stage documents, optimizer step, and parent documents.
+
+    Raises:
+        ValueError: If the stage, size, or checkpoint step is outside the protocol.
+    """
+    if stage == "base":
+        if size != 0 or step != 0:
+            raise ValueError("The untouched base has zero training exposure")
+        return {"stage": "base", "docs_seen": 0, "step": 0, "base_docs": 0}
+    if stage not in EFFECTIVE_BATCHES or size not in SIZES:
+        raise ValueError("Unknown paired evaluation condition")
+    corpus_size = 39200 if stage == "reverse" else size
+    full_steps = corpus_size // EFFECTIVE_BATCHES[stage]
+    if step < 0 or step > full_steps:
+        raise ValueError("Evaluation step is outside the completed run")
+    actual_step = step or full_steps
+    return {
+        "stage": stage,
+        "docs_seen": actual_step * EFFECTIVE_BATCHES[stage],
+        "step": actual_step,
+        "base_docs": size if stage == "reverse" else 0,
+    }
+
+
 def evaluate(replicate: int, size: int, stage: str, step: int,
              adapter: Path | None, dry_run: bool) -> None:
     """Runs the unchanged official evaluation paths at batch one.
@@ -381,6 +414,8 @@ def evaluate(replicate: int, size: int, stage: str, step: int,
                "--output", str(destination), "--wandb-project", "sdf_reversal_qwen8b",
                "--sweep", "qwen8b_paired_8000_19600", "--open-limit", "20",
                "--eval-batch-size", "1", "--generate-mcq", "--judge", "openrouter"]
+    for key, value in evaluation_metadata(size, stage, step).items():
+        command += [f"--{key.replace('_', '-')}", str(value)]
     if replicate:
         command += ["--replicate", str(replicate)]
     if adapter is not None:
