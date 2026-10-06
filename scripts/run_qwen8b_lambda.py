@@ -24,16 +24,36 @@ ROOT = Path(__file__).resolve().parents[1]
 API = "https://cloud.lambdalabs.com/api/v1"
 
 
+def pair_training_seconds(insert_seconds_per_step: float, reverse_seconds_per_step: float) -> float:
+    """Estimates pair training time using the post-matched optimizer-step counts.
+
+    Args:
+        insert_seconds_per_step: Measured batch-8 insertion optimizer-step duration.
+        reverse_seconds_per_step: Measured batch-16 reversal optimizer-step duration.
+
+    Returns:
+        Seconds for 1,000 + 2,450 insertion steps and two 2,450-step reversals.
+
+    Raises:
+        ValueError: A measured duration is nonpositive.
+    """
+    if insert_seconds_per_step <= 0 or reverse_seconds_per_step <= 0:
+        raise ValueError("Benchmark step durations must be positive")
+    return 3450 * insert_seconds_per_step + 4900 * reverse_seconds_per_step
+
+
 class Controller:
     """Owns one explicitly authorized Lambda instance and its bounded experiment."""
 
-    def __init__(self, env_file: Path, destination: Path, maximum: float) -> None:
+    def __init__(self, env_file: Path, destination: Path, maximum: float,
+                 identity: Path | None = None) -> None:
         """Initializes credentials and persistent controller state.
 
         Args:
             env_file: Local credentials file; values never appear in logs.
             destination: Durable local output directory outside the worktree.
             maximum: Maximum authorized Lambda instance spend in USD.
+            identity: Optional experiment-specific SSH private-key path.
         """
         env = dotenv_values(env_file)
         self.key = env.get("LAMBDA_API_KEY") or ""
@@ -42,7 +62,7 @@ class Controller:
             raise ValueError("Lambda and OpenRouter keys are required")
         self.destination = destination
         self.maximum = maximum
-        self.identity = Path.home() / ".ssh/sdf_lambda_ed25519"
+        self.identity = identity or Path.home() / ".ssh/sdf_lambda_ed25519"
         self.public_key = self.identity.with_suffix(".pub").read_text().strip()
         self.state: dict[str, object] = {}
         self.ip = ""
@@ -102,7 +122,9 @@ class Controller:
         Returns:
             Argument prefix without remote command or credentials.
         """
-        return ["ssh", "-i", str(self.identity), "-o", "BatchMode=yes", "-o",
+        return ["ssh", "-i", str(self.identity), "-o", "IdentityAgent=none", "-o",
+                "IdentitiesOnly=yes", "-o", "BatchMode=yes", "-o",
+                f"UserKnownHostsFile={self.identity.with_suffix('.known_hosts')}", "-o",
                 "StrictHostKeyChecking=accept-new", "-o", "ConnectTimeout=10", f"ubuntu@{self.ip}"]
 
     def ssh(self, command: str, input_text: str | None = None,
@@ -173,7 +195,7 @@ class Controller:
         if existing:
             raise RuntimeError("Account already has an instance; refusing an ambiguous launch")
         keys = self.api("GET", "/ssh-keys")["data"]
-        key_name = "sdf-qwen8b-20261006"
+        key_name = "sdf-qwen8b-" + hashlib.sha256(self.public_key.encode()).hexdigest()[:12]
         for row in keys:
             if row["public_key"].split()[:2] == self.public_key.split()[:2]:
                 key_name = row["name"]
@@ -202,6 +224,12 @@ class Controller:
                 if response.returncode == 0:
                     self.emit("SSH_READY")
                     return
+                error = response.stderr.strip().splitlines()[-1:] or ["No SSH diagnostic"]
+                self.emit(f"SSH_NOT_READY {error[0]}")
+                if "Permission denied (publickey)" in response.stderr:
+                    raise RuntimeError("SSH key cannot authenticate; refusing to idle a billed instance")
+            if instance.get("status") in ("unhealthy", "terminated"):
+                raise RuntimeError(f"Instance boot failed: {instance['status']}")
             time.sleep(15)
         raise TimeoutError("Instance never became SSH-ready")
 
@@ -243,7 +271,8 @@ class Controller:
             command: Trusted remote command.
         """
         directory = f"outputs/qwen8b_paired/control/{phase}"
-        wrapped = f"{command}; code=$?; printf '%s\\n' \"$code\" > {directory}/exit; exit \"$code\""
+        wrapped = (f"bash -c {shlex.quote(command)}; code=$?; "
+                   f"printf '%s\\n' \"$code\" > {directory}/exit; exit \"$code\"")
         remote = self.remote_command(
             f"mkdir -p {directory}; nohup bash -c {shlex.quote(wrapped)} "
             f"> {directory}/log 2>&1 < /dev/null & "
@@ -274,7 +303,7 @@ class Controller:
             "active=[json.loads(f.read_text()) for f in p.glob(\"active_*.json\")]; "
             "[(pathlib.Path(a[\"output_dir\"])/\".save_request\").touch() "
             "for a in active if a.get(\"output_dir\") and pathlib.Path(a[\"output_dir\"]).is_dir()]; "
-            "time.sleep(90); "
+            "time.sleep(90 if active else 0); "
             "[(os.killpg(a[\"pid\"],signal.SIGTERM) if pathlib.Path(\"/proc\",str(a[\"pid\"])).exists() "
             "else None) for a in active]'"
         )
@@ -328,13 +357,26 @@ class Controller:
 
     def bootstrap(self) -> None:
         """Installs the locked environment, queue helper, and public base model."""
+        model_setup = (
+            "from pathlib import Path; import json; from huggingface_hub import HfApi,snapshot_download; "
+            "p=Path('.credentials.json'); credentials=json.loads(p.read_text()); "
+            "revision=HfApi(token=credentials['HF_TOKEN']).model_info('Qwen/Qwen3-8B').sha; "
+            "assert revision, 'Missing base model revision'; "
+            "snapshot=snapshot_download('Qwen/Qwen3-8B', revision=revision, token=credentials['HF_TOKEN']); "
+            "credentials['QWEN8B_BASE_MODEL']=snapshot; p.write_text(json.dumps(credentials)); "
+            "output=Path('outputs/qwen8b_paired'); "
+            "(output/'model_revision.json').write_text(json.dumps({'source_model':'Qwen/Qwen3-8B', "
+            "'revision':revision,'snapshot':snapshot},indent=2)); "
+            "(output/'input_manifest.json').write_text(Path('data/processed/qwen8b_paired/manifest.json').read_text()); "
+            "print('MODEL_PINNED revision='+revision)"
+        )
         command = (
             "set -e; export PATH=$HOME/.local/bin:$PATH; "
             "if ! command -v uv >/dev/null; then curl -LsSf https://astral.sh/uv/install.sh | sh; fi; "
             "sudo apt-get update -qq && sudo apt-get install -y -qq task-spooler; "
             "uv sync; uv run sdf-verify-env; "
-            "uv run hf download Qwen/Qwen3-8B; "
-            "bash scripts/run_qwen8b_pair.sh --dry-run; "
+            + "uv run python -c " + shlex.quote(model_setup) + "; "
+            + "bash scripts/run_qwen8b_pair.sh --dry-run; "
             "uv run python scripts/qwen8b_paired.py benchmark --dry-run"
         )
         self.start_operation("bootstrap", command)
@@ -345,7 +387,10 @@ class Controller:
         self.start_operation("benchmark", "bash scripts/run_qwen8b_pair.sh benchmark")
         self.wait_operation("benchmark")
         data = json.loads((self.destination / "results/benchmark.json").read_text())
-        seconds = 1725 * data["insert"]["seconds_per_step"] + 4900 * data["reverse"]["seconds_per_step"]
+        if data.get("effective_batches") != {"insert": 8, "reverse": 16} or data.get("microbatch") != 2:
+            raise ValueError("Benchmark must use the approved insertion/reversal recipe and fixed microbatch 2")
+        seconds = pair_training_seconds(data["insert"]["seconds_per_step"],
+                                        data["reverse"]["seconds_per_step"])
         projected_training = seconds / 3600 * self.rate * 1.25
         remaining = self.maximum - self.spent()
         self.state["projected_pair_training_usd_with_25pct_margin"] = projected_training
@@ -387,6 +432,8 @@ class Controller:
             response = self.ssh(self.remote_command("python3 -c " + shlex.quote(code)))
             inventory = json.loads(response.stdout.strip().splitlines()[-1])
         else:
+            if probe.returncode != 1 and self.state.get("phase") != "boot":
+                raise RuntimeError("SSH unavailable; cannot verify results or authorize termination")
             # Before provisioning, no training/evaluation process could have run.
             inventory = []
         for item in inventory:
@@ -429,13 +476,15 @@ def main() -> None:
     parser.add_argument("--env-file", type=Path, required=True)
     parser.add_argument("--destination", type=Path, required=True)
     parser.add_argument("--maximum-usd", type=float, default=72.79)
+    parser.add_argument("--ssh-identity", type=Path,
+                        help="Dedicated SSH key path; only the .pub key is registered with Lambda.")
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
     if not 0 < args.maximum_usd <= 72.79:
         raise ValueError("Maximum spend must be positive and no greater than the authorized $72.79")
     if (args.destination / "controller_state.json").exists():
         raise FileExistsError("Existing controller state found; refusing to launch another instance")
-    controller = Controller(args.env_file, args.destination, args.maximum_usd)
+    controller = Controller(args.env_file, args.destination, args.maximum_usd, args.ssh_identity)
     selected = controller.preflight()
     if args.dry_run:
         controller.emit("DRY_RUN_OK no instance launched, credentials unchanged")
