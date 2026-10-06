@@ -160,6 +160,77 @@ class BudgetTests(unittest.TestCase):
             self.assertEqual(process.returncode, 1)
             self.assertEqual(status.read_text().strip(), "1")
 
+    def sxm_controller(self) -> Controller:
+        """Builds a test fixture without credentials, network calls, or output writes.
+
+        Returns:
+            An unlaunched controller for one H100 SXM in an explicit region.
+        """
+        controller = Controller.__new__(Controller)
+        controller.instance_type = "gpu_1x_h100_sxm5"
+        controller.region = "us-southeast-1"
+        controller.identity = Path("/experiment/key")
+        controller.public_key = "ssh-ed25519 unit"
+        controller.judge_key = "unit"
+        controller.maximum = 68.0
+        controller.state = {}
+        controller.remote = "unit"
+        return controller
+
+    def test_sxm_preflight_checks_explicit_region_and_price(self) -> None:
+        """Alternate capacity does not waive the live-rate or region guards."""
+        controller = self.sxm_controller()
+        selected = {"instance_type": {"price_cents_per_hour": 429},
+                    "regions_with_capacity_available": [{"name": "us-southeast-1"}]}
+        with patch("scripts.run_qwen8b_lambda.Path.is_file", return_value=True), \
+                patch("scripts.run_qwen8b_lambda.requests.get") as get, \
+                patch.object(controller, "api", return_value={"data": {
+                    "gpu_1x_h100_sxm5": selected}}), patch.object(controller, "emit"):
+            get.return_value.json.return_value = {"data": [{"id": "deepseek/deepseek-v4-flash"}]}
+            self.assertEqual(controller.preflight(), selected)
+            selected["instance_type"]["price_cents_per_hour"] = 430
+            with self.assertRaises(RuntimeError):
+                controller.preflight()
+            selected["instance_type"]["price_cents_per_hour"] = 429
+            controller.region = "us-west-3"
+            with self.assertRaises(RuntimeError):
+                controller.preflight()
+
+    def test_only_single_h100_variants_are_allowed(self) -> None:
+        """Unsupported hardware is rejected before reading any credentials."""
+        with self.assertRaises(ValueError):
+            Controller(Path("unused"), Path("unused"), 68.0, instance_type="gpu_8x_h100_sxm5")
+
+    def test_startup_deadline_preserves_selected_hardware_and_region(self) -> None:
+        """An SSH timeout must fail within ten minutes, not reset on each retry."""
+        controller = self.sxm_controller()
+        selected = {"instance_type": {"price_cents_per_hour": 429},
+                    "regions_with_capacity_available": [{"name": "us-southeast-1"}]}
+        responses = [{"data": []}, {"data": [{"public_key": "ssh-ed25519 unit", "name": "unit"}]},
+                     {"data": {"instance_ids": ["unit"]}}]
+        with patch.object(controller, "api", side_effect=responses) as api, \
+                patch.object(controller, "save_state"), patch.object(controller, "emit"), \
+                patch.object(controller, "ssh") as ssh, \
+                patch("scripts.run_qwen8b_lambda.time.time", side_effect=[1000.0, 1600.0]), \
+                self.assertRaises(TimeoutError):
+            controller.launch(selected)
+        payload = api.call_args_list[2].args[2]
+        self.assertEqual(payload["instance_type_name"], "gpu_1x_h100_sxm5")
+        self.assertEqual(payload["region_name"], "us-southeast-1")
+        self.assertEqual(payload["quantity"], 1)
+        ssh.assert_not_called()
+
+    def test_failure_cleanup_is_not_reported_as_budget_exhaustion(self) -> None:
+        """A setup failure must not masquerade as running out of money."""
+        controller = self.sxm_controller()
+        with patch.object(controller, "ssh"), patch.object(controller, "save_state"), \
+                patch.object(controller, "emit"):
+            controller.budget_stop("failure_cleanup")
+            self.assertFalse(controller.state["budget_stopped"])
+            self.assertEqual(controller.state["stop_reason"], "failure_cleanup")
+            controller.budget_stop()
+            self.assertTrue(controller.state["budget_stopped"])
+
     def test_pair_cost_uses_corrected_insertion_step_counts(self) -> None:
         """All four full-run schedules, not the old batch-16 insertion plan, are counted."""
         self.assertEqual(pair_training_seconds(1.0, 1.0), 8350.0)

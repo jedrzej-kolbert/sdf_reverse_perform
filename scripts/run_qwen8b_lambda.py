@@ -22,6 +22,8 @@ from dotenv import dotenv_values
 
 ROOT = Path(__file__).resolve().parents[1]
 API = "https://cloud.lambdalabs.com/api/v1"
+GPU_HOURLY_LIMITS = {"gpu_1x_h100_pcie": 3.29, "gpu_1x_h100_sxm5": 4.29}
+BOOT_TIMEOUT_SECONDS = 600
 
 
 def pair_training_seconds(insert_seconds_per_step: float, reverse_seconds_per_step: float) -> float:
@@ -46,7 +48,8 @@ class Controller:
     """Owns one explicitly authorized Lambda instance and its bounded experiment."""
 
     def __init__(self, env_file: Path, destination: Path, maximum: float,
-                 identity: Path | None = None) -> None:
+                 identity: Path | None = None, instance_type: str = "gpu_1x_h100_pcie",
+                 region: str | None = None) -> None:
         """Initializes credentials and persistent controller state.
 
         Args:
@@ -54,7 +57,13 @@ class Controller:
             destination: Durable local output directory outside the worktree.
             maximum: Maximum authorized Lambda instance spend in USD.
             identity: Optional experiment-specific SSH private-key path.
+            instance_type: Single 80GB H100 variant; live price must pass its ceiling.
+            region: Optional explicit region, which must have advertised capacity.
         """
+        if instance_type not in GPU_HOURLY_LIMITS:
+            raise ValueError("Only a single H100 PCIe or SXM is supported")
+        self.instance_type = instance_type
+        self.region = region
         env = dotenv_values(env_file)
         self.key = env.get("LAMBDA_API_KEY") or ""
         self.judge_key = env.get("OPENROUTER_API_KEY") or ""
@@ -159,7 +168,7 @@ class Controller:
         """Checks credentials, data, SSH key, pricing, and GPU availability.
 
         Returns:
-            Live metadata for the selected single H100 PCIe instance.
+            Live metadata for the selected single H100 instance.
         """
         if not self.identity.is_file():
             raise FileNotFoundError(self.identity)
@@ -176,13 +185,18 @@ class Controller:
         types = self.api("GET", "/instance-types")["data"]
         if not isinstance(types, dict):
             raise ValueError("Unexpected instance-types shape")
-        selected = types["gpu_1x_h100_pcie"]
-        if not selected["regions_with_capacity_available"]:
-            raise RuntimeError("No single H100 PCIe capacity currently available")
+        selected = types[self.instance_type]
+        regions = selected["regions_with_capacity_available"]
+        if not regions:
+            raise RuntimeError(f"No capacity currently available for {self.instance_type}")
+        if self.region and self.region not in [region["name"] for region in regions]:
+            raise RuntimeError(f"No {self.instance_type} capacity in requested region {self.region}")
         price = selected["instance_type"]["price_cents_per_hour"] / 100
-        if price > 3.29:
-            raise RuntimeError(f"H100 PCIe live price exceeds planned $3.29/h: {price}")
-        self.emit(f"PREFLIGHT_OK H100_PCIe hourly_price=${price:.2f} maximum=${self.maximum:.2f}")
+        limit = GPU_HOURLY_LIMITS[self.instance_type]
+        if price > limit:
+            raise RuntimeError(f"{self.instance_type} live price exceeds planned ${limit:.2f}/h: {price}")
+        self.emit(f"PREFLIGHT_OK {self.instance_type} hourly_price=${price:.2f} "
+                  f"maximum=${self.maximum:.2f}")
         return selected
 
     def launch(self, selected: dict[str, object]) -> None:
@@ -202,21 +216,26 @@ class Controller:
                 break
         else:
             self.api("POST", "/ssh-keys", {"name": key_name, "public_key": self.public_key})
-        region = selected["regions_with_capacity_available"][0]["name"]
+        region = self.region or selected["regions_with_capacity_available"][0]["name"]
         self.rate = selected["instance_type"]["price_cents_per_hour"] / 100
         self.launched = time.time()
         result = self.api("POST", "/instance-operations/launch", {
-            "region_name": region, "instance_type_name": "gpu_1x_h100_pcie",
+            "region_name": region, "instance_type_name": self.instance_type,
             "ssh_key_names": [key_name], "quantity": 1, "name": "qwen8b-paired-20261006",
         })
         identifiers = result["data"]["instance_ids"]
         if len(identifiers) != 1:
             raise RuntimeError("Expected exactly one launched instance")
-        self.state.update({"instance_id": identifiers[0], "region": region, "phase": "boot"})
+        self.state.update({"instance_id": identifiers[0], "region": region, "phase": "boot",
+                           "instance_type": self.instance_type})
         self.save_state()
         self.emit(f"INSTANCE_LAUNCHED region={region} instance_id={identifiers[0]}")
         for _ in range(80):
+            if time.time() - self.launched >= BOOT_TIMEOUT_SECONDS:
+                raise TimeoutError("SSH was not ready within the 10-minute startup limit")
             instance = self.api("GET", f"/instances/{identifiers[0]}")["data"]
+            if instance.get("status") in ("unhealthy", "terminated"):
+                raise RuntimeError(f"Instance boot failed: {instance['status']}")
             if instance.get("ip"):
                 self.ip = instance["ip"]
                 self.save_state()
@@ -228,8 +247,6 @@ class Controller:
                 self.emit(f"SSH_NOT_READY {error[0]}")
                 if "Permission denied (publickey)" in response.stderr:
                     raise RuntimeError("SSH key cannot authenticate; refusing to idle a billed instance")
-            if instance.get("status") in ("unhealthy", "terminated"):
-                raise RuntimeError(f"Instance boot failed: {instance['status']}")
             time.sleep(15)
         raise TimeoutError("Instance never became SSH-ready")
 
@@ -295,8 +312,12 @@ class Controller:
         ], check=True, timeout=180)
         self.save_state()
 
-    def budget_stop(self) -> None:
-        """Requests checkpoint persistence and stops active experiment processes."""
+    def budget_stop(self, reason: str = "budget") -> None:
+        """Requests checkpoint persistence and stops active experiment processes.
+
+        Args:
+            reason: Distinguishes an actual budget stop from failure cleanup.
+        """
         command = self.remote_command(
             "python3 -c 'import pathlib,json,os,signal,time; "
             "p=pathlib.Path(\"outputs/qwen8b_paired\"); (p/\"STOP\").touch(); "
@@ -308,9 +329,10 @@ class Controller:
             "else None) for a in active]'"
         )
         self.ssh(command, check=False, timeout=130)
-        self.state["budget_stopped"] = True
+        self.state["budget_stopped"] = reason == "budget"
+        self.state["stop_reason"] = reason
         self.save_state()
-        self.emit("BUDGET_STOP_REQUESTED")
+        self.emit(f"STOP_REQUESTED reason={reason}")
 
     def wait_operation(self, phase: str) -> None:
         """Polls an operation, syncing outputs and covering success/failure/budget stops.
@@ -463,6 +485,7 @@ class Controller:
             matching = [x for x in instances if x["id"] == self.state["instance_id"]]
             if not matching or matching[0]["status"] == "terminated":
                 self.state["terminated"] = True
+                self.state["estimated_final_spend_usd"] = self.spent()
                 self.save_state()
                 self.emit(f"INSTANCE_TERMINATED estimated_total_spend=${self.spent():.2f}")
                 return
@@ -478,13 +501,17 @@ def main() -> None:
     parser.add_argument("--maximum-usd", type=float, default=72.79)
     parser.add_argument("--ssh-identity", type=Path,
                         help="Dedicated SSH key path; only the .pub key is registered with Lambda.")
+    parser.add_argument("--instance-type", choices=sorted(GPU_HOURLY_LIMITS),
+                        default="gpu_1x_h100_pcie")
+    parser.add_argument("--region", help="Explicit region with available capacity.")
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
     if not 0 < args.maximum_usd <= 72.79:
         raise ValueError("Maximum spend must be positive and no greater than the authorized $72.79")
     if (args.destination / "controller_state.json").exists():
         raise FileExistsError("Existing controller state found; refusing to launch another instance")
-    controller = Controller(args.env_file, args.destination, args.maximum_usd, args.ssh_identity)
+    controller = Controller(args.env_file, args.destination, args.maximum_usd, args.ssh_identity,
+                            args.instance_type, args.region)
     selected = controller.preflight()
     if args.dry_run:
         controller.emit("DRY_RUN_OK no instance launched, credentials unchanged")
@@ -495,8 +522,11 @@ def main() -> None:
         controller.bootstrap()
         controller.run_pairs()
     except Exception:
-        if controller.ip and not controller.state.get("terminated"):
-            controller.budget_stop()
+        controller.emit(f"FAILURE_CLEANUP phase={controller.state.get('phase', 'unlaunched')}")
+        if (controller.ip and not controller.state.get("terminated")
+                and controller.state.get("phase") != "boot"
+                and not controller.state.get("stop_reason")):
+            controller.budget_stop("failure_cleanup")
         raise
     finally:
         if controller.ip and not controller.state.get("terminated"):

@@ -57,9 +57,13 @@ not committed artifacts.
 
 ## Remote execution
 
-The Lambda controller selects a single H100 PCIe only when live pricing is no
-higher than $3.29/hour. The authorized maximum is $72.79. It includes boot and
-setup time in its elapsed-time spending estimate, reserves $15 when deciding
+The Lambda controller uses one 80GB H100: PCIe by default at no more than
+$3.29/hour, or SXM when explicitly selected at no more than $4.29/hour. An
+explicit region must advertise capacity. Startup fails after ten minutes without
+SSH instead of leaving an unusable instance billed indefinitely. Infrastructure
+retries must deduct prior startup costs and shutdown reserves from the original
+$72.79 authorization; they do not reset the account-level budget. The controller
+includes boot and setup time in its elapsed-time spending estimate, reserves $15 when deciding
 whether the first pair fits, and adds a 25% training-time margin. A second pair
 is permitted only when the **observed all-in first-pair cost**, plus margin,
 fits with an $8 reserve. At $6 remaining it stops work to preserve results.
