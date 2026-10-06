@@ -7,13 +7,13 @@ post_dst = '/home/jkk/jedrzej-kolbert.github.io/_posts/2026-07-21-training-a-fal
 figures_dir = '/home/jkk/sdf_reverse_perform/docs/figures'
 assets_dir = '/home/jkk/jedrzej-kolbert.github.io/assets/img'
 
-with open(post_src, 'r', encoding='utf-8') as f:
+with open(post_src, encoding='utf-8') as f:
     content = f.read()
 
 # Copy figure files to assets/img
 img_matches = re.findall(r'!\[([^\]]*)\]\((https://raw\.githubusercontent\.com/[^)]+/docs/figures/([^)]+))\)', content)
 copied_count = 0
-for alt, url, filename in img_matches:
+for _alt, _url, filename in img_matches:
     src_path = os.path.join(figures_dir, filename)
     dst_path = os.path.join(assets_dir, filename)
     if os.path.exists(src_path):

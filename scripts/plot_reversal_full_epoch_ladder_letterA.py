@@ -50,7 +50,6 @@ from _ladder_common import (  # noqa: E402
     COLOR_08B,
     COLOR_AQUA,
     GRID,
-    INK_PRIMARY,
     INK_SECONDARY,
     ROOT,
     is_a_false_consistent,
@@ -121,7 +120,7 @@ def main() -> int:
         Process exit code.
     """
     fig, axes = plt.subplots(1, len(_PANELS), figsize=(10.6, 4.9), sharey=True)
-    for ax, (category, title) in zip(axes, _PANELS, strict=True):
+    for ax, (category, _title) in zip(axes, _PANELS, strict=True):
         a_false, a_other, n_f, n_o = load_a_rate_by_role(category)
         ax.plot(
             sorted(a_false),

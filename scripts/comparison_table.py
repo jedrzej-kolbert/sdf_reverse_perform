@@ -28,10 +28,9 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import torch
+import wandb
 from peft import PeftModel
 from transformers import AutoModelForCausalLM, AutoTokenizer
-
-import wandb
 
 ROOT = Path(__file__).resolve().parent.parent
 

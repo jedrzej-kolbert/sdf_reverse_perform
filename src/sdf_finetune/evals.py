@@ -8,11 +8,11 @@ from collections.abc import Callable
 from pathlib import Path
 
 import torch
+import wandb
 from dotenv import load_dotenv
 from peft import PeftModel
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
-import wandb
 from sdf_finetune.openrouter_judge import extract_mcq_letter_with_judge, grade_openended_response
 from sdf_finetune.wandb_meta import META_COLUMNS, RunMetadata
 

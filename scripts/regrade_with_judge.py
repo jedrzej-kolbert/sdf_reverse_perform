@@ -21,9 +21,9 @@ import json
 import os
 from pathlib import Path
 
+import wandb
 from dotenv import load_dotenv
 
-import wandb
 from sdf_finetune.evals import (
     aggregate_open_judge_metrics,
     build_open_questions_table,
