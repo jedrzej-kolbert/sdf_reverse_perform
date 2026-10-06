@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 import os
 import random
 import re
@@ -422,6 +423,38 @@ def merge(replicate: int, size: int, dry_run: bool) -> None:
     (parent / "qwen3_base").symlink_to("merged_model", target_is_directory=True)
 
 
+def benchmark_step_seconds(log: str, steps: int) -> float:
+    """Extracts conservative trainer time per step, excluding process initialization.
+
+    Trainer metrics may serialize numeric values as quoted strings. The reported
+    runtime can include final validation, making this a conservative estimate.
+    Never substitute whole-process wall time: doing so extrapolates loading and
+    preprocessing costs over thousands of optimizer steps.
+
+    Args:
+        log: Captured trainer output containing its final runtime metric.
+        steps: Number of optimizer steps completed by the benchmark.
+
+    Returns:
+        Reported trainer runtime divided by the completed optimizer steps.
+
+    Raises:
+        ValueError: Steps or runtime are invalid, or the runtime metric is missing.
+    """
+    if steps <= 0:
+        raise ValueError("Benchmark optimizer steps must be positive")
+    runtimes = re.findall(
+        r"['\"]train_runtime['\"]\s*:\s*['\"]?"
+        r"([0-9]+(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?)['\"]?(?=\s*[,}]|\s*$)", log,
+    )
+    if not runtimes:
+        raise ValueError("Missing trainer runtime; refusing to extrapolate process startup time")
+    runtime = float(runtimes[-1])
+    if not math.isfinite(runtime) or runtime <= 0:
+        raise ValueError("Benchmark trainer runtime must be finite and positive")
+    return runtime / steps
+
+
 def benchmark(dry_run: bool) -> None:
     """Benchmarks corpus-specific throughput without changing reported schedules.
 
@@ -434,10 +467,11 @@ def benchmark(dry_run: bool) -> None:
         if dry_run:
             continue
         text = (OUTPUT / "logs" / f"benchmark_{stage}_b{MICROBATCH}.log").read_text()
-        runtimes = re.findall(r"['\"]train_runtime['\"]\s*:\s*([0-9.]+)", text)
-        seconds = float(runtimes[-1]) / 20 if runtimes else elapsed / 20
+        seconds = benchmark_step_seconds(text, 20)
         results[stage] = {"microbatch": MICROBATCH, "seconds_per_step": seconds,
-                          "effective_batch": EFFECTIVE_BATCHES[stage], "wall_seconds": elapsed}
+                          "effective_batch": EFFECTIVE_BATCHES[stage], "wall_seconds": elapsed,
+                          "trainer_runtime_seconds": seconds * 20,
+                          "runtime_source": "trainer_train_runtime", "optimizer_steps": 20}
         emit(f"BENCHMARK stage={stage} microbatch={MICROBATCH} "
              f"effective_batch={EFFECTIVE_BATCHES[stage]} seconds_per_step={seconds:.3f}")
     if not dry_run:

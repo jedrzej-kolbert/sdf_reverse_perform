@@ -68,7 +68,11 @@ whether the first pair fits, and adds a 25% training-time margin. A second pair
 is permitted only when the **observed all-in first-pair cost**, plus margin,
 fits with an $8 reserve. At $6 remaining it stops work to preserve results.
 These are conservative estimates, not a live account balance or final invoice.
-OpenRouter billing is separate from Lambda credits.
+OpenRouter billing is separate from Lambda credits. Benchmark throughput uses the
+trainer-reported runtime (including any final validation), accepting both numeric
+and quoted numeric metrics. Loading, preprocessing, and saving remain separately
+recorded wall time; missing trainer metrics fail rather than extrapolating those
+one-time costs over every optimizer step.
 
 ```bash
 uv run python scripts/run_qwen8b_lambda.py \

@@ -231,6 +231,23 @@ class BudgetTests(unittest.TestCase):
             controller.budget_stop()
             self.assertTrue(controller.state["budget_stopped"])
 
+    def test_benchmark_parses_numeric_and_quoted_trainer_metrics(self) -> None:
+        """Trainer formatting must not silently switch projections to startup wall time."""
+        for value in ("62.05", "'62.05'", '"62.05"', "'6.205e1'"):
+            log = "{'train_runtime': " + value + ", 'train_loss': '1.829'}"
+            self.assertAlmostEqual(experiment.benchmark_step_seconds(log, 20), 3.1025)
+        log = "{'train_runtime': 1}\n{'train_runtime': '69.45'}"
+        self.assertAlmostEqual(experiment.benchmark_step_seconds(log, 20), 3.4725)
+
+    def test_missing_or_invalid_benchmark_runtime_cannot_use_wall_time(self) -> None:
+        """Unknown throughput fails safely instead of fabricating per-step timing."""
+        for log in ("no training metrics", "{'train_runtime': '0'}",
+                    "{'train_runtime': 'nan'}", "{'train_runtime': '1e400'}"):
+            with self.assertRaises(ValueError):
+                experiment.benchmark_step_seconds(log, 20)
+        with self.assertRaises(ValueError):
+            experiment.benchmark_step_seconds("{'train_runtime': 62.05}", 0)
+
     def test_pair_cost_uses_corrected_insertion_step_counts(self) -> None:
         """All four full-run schedules, not the old batch-16 insertion plan, are counted."""
         self.assertEqual(pair_training_seconds(1.0, 1.0), 8350.0)
